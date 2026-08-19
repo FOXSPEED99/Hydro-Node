@@ -1,43 +1,34 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v4   |   Last updated: 2026-08-19   |   Status: Stage 0 review — magnet-only on/off confirmed, awaiting droop measurement
+Version: v5   |   Last updated: 2026-08-19   |   Status: Stage 0 review — first issue closed; battery paralleling under discussion
 
 ## STATUS SUMMARY
-Total issues: 44   |   Open: 44   |   Resolved: 0   |   Won't fix: 0
-Blockers remaining: 6
-Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of battery, not 2 years), the ultrasonic connector pin order does not match the module it plugs into, and the two Li-SOCl₂ cells are hard-paralleled without blocking diodes.
+Total issues: 46   |   Open: 45   |   Resolved: 1   |   Won't fix: 0
+Blockers remaining: 3
+Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled without blocking diodes, the PCB has no ground plane, and the LoRa band and legal power are undefined.
 
 ---
 
 ## OPEN ISSUES
 
-### HW-001 — Ultrasonic connector J5 pin order does not match the RCWL-1670 module
-- Severity: BLOCKER
-- Status: OPEN
-- Component / net: J5 (4-pin), nets to U2.D6 (Trig), U2.D7 (Echo), VCC, GND_SW
-- Problem: The schematic defines J5 as **1=GND, 2=VCC, 3=Echo, 4=Trig**. The RCWL-1670 module's pads are, left to right, **GND, RX, TX, +5V**, where RX = TRIG input and TX = ECHO output. Mapped position-for-position, pins 2 and 4 are swapped: the battery rail lands on the module's TRIG input, and the MCU's Trig output (D6) lands on the module's supply pin. The module never powers up, and D6 is driven into a rail node.
-- Impact: Node does not measure at all (FR-1). Risk of damage to the ATmega328P output stage and to the module. On a production line this is an unrecoverable build error because the harness looks correct.
-- Recommended fix: Re-order J5 in the schematic and PCB to **1=GND, 2=Trig, 3=Echo, 4=VCC** so a straight-through 1:1 harness works, and print the four signal names on the silkscreen next to the connector. Do not solve this with a crossed harness — a crossed cable is invisible at incoming inspection and will be built wrong.
-- Notes: Confirmed from the module photo in `Components Images/1-19.jpg` (silkscreen reads `GND RX TX +5V`) and from the RCWL-1670 published pinout (RX = TRIG, TX = ECHO). **Question for you: how is the existing cable on your built board actually wired?** If you already cross-wired it by hand, the board works today but the schematic is still wrong and must be corrected before the production release.
-
-### HW-002 — Arduino Pro Mini on-board power LED and MIC5205 regulator are permanently powered
-- Severity: BLOCKER
-- Status: OPEN
-- Component / net: U2 (Arduino Pro Mini 3.3 V/8 MHz), VCC / GND_SW
-- Problem: The design feeds the battery straight into the Pro Mini's **VCC** pin (correctly bypassing RAW), but the module's own always-on parts stay in circuit: the on-board power LED, and the MIC5205 LDO back-fed through its output pin. Measured figures for this exact board: the power LED alone draws roughly 1–3 mA, and swapping the MIC5205 for a low-Iq part is reported to save about 50 µA of sleep current. Neither is switched by anything in this design.
-- Impact: **This is the single biggest threat to NFR-1.** Sleep current is ~2 mA instead of the ~10–25 µA the rest of the design is capable of. With 4.4 Ah usable, that is **≈88 days**, not 2 years — a factor of ~12 miss.
-- Recommended fix: Two options, and I recommend the second for a production line.
-  1. **Short term (to unblock firmware work):** on each module, remove the power LED (or its series resistor) and remove the MIC5205. Verify sleep current on a bench supply — you should land at 5–10 µA. Also program the fuses to disable BOD in sleep (BOD costs ~20 µA) and confirm the sketch puts the ATmega328P in SLEEP_MODE_PWR_DOWN (~4.5 µA with the WDT running).
-  2. **Production:** place the ATmega328P (or a lower-power MCU — see HW-026) directly on the Hydro Node PCB. Reworking a hobby module on every unit is not a manufacturable process, and clone Pro Minis vary in regulator, LED resistor and fuse settings between batches.
-- Notes: Independently reported measurements put a stripped Pro Mini 3.3 V/8 MHz at **~4.5 µA** in power-down. ATmega328P datasheet: power-down with WDT enabled ≈ 4.2 µA typ; with WDT and BOD disabled ≈ 0.1 µA. FR-5's 2-minute wake needs the WDT, so budget ~4.5 µA for the MCU.
-
 ### HW-003 — Two LS14500 Li-SOCl₂ cells hard-paralleled with no blocking diodes
 - Severity: BLOCKER
-- Status: OPEN
-- Component / net: Battery connector (2-pin JST-XH), VBAT / VBAT_RTN
-- Problem: The BOM specifies "2x LS14500 SAFT 3.6 V LITHIUM BATTERY (Parallel Connection)" and the schematic shows a single 2-pin battery connector, i.e. the two cells are wired directly in parallel. Lithium-thionyl-chloride primary cells must never be charged. Two directly-paralleled cells that age or passivate at different rates will push current into each other — the stronger cell charges the weaker one. Cell manufacturers require a **series blocking diode per cell** whenever primary Li cells are paralleled, for exactly this reason.
-- Impact: Safety. A charged Li-SOCl₂ cell can vent, and it is inside a sealed enclosure on an occupied building's roof. This is also a certification and liability blocker, not just an engineering one.
-- Recommended fix: Add a **series Schottky (or better, an ideal-diode controller) in each cell's positive leg** before they join. Use a low-leakage, low-Vf Schottky (e.g. a 20–30 V, ~0.2 V @ 1 mA part with reverse leakage in the sub-µA range at 25 °C) and check the reverse-leakage spec at 60 °C, because that leakage is a permanent drain. Also add a **PTC or fuse** in the pack lead. Confirm the choice against SAFT's own application guidance for paralleling LS-series cells.
-- Notes: Also decide whether you actually need two cells. One LS14500 (2.6 Ah) supports 50 mA continuous; the Ra-02 draws up to 120 mA in TX, so the pack is sized for the pulse, not the energy. If HW-009 is solved with a proper pulse-support capacitor, a **single cell plus an HLC/supercapacitor** removes this entire problem — that is the standard industry answer for Li-SOCl₂ + LoRa.
+- Status: IN DISCUSSION
+- Component / net: Battery connector, VBAT / GND_RAW
+- Problem: The two cells are wired directly in parallel. Lithium-thionyl-chloride primary cells must never be charged, and two directly-paralleled cells will push current into one another as they diverge. Cell manufacturers require a **series blocking diode per cell** whenever primary lithium cells are paralleled.
+- Impact: Forcing current into a Li-SOCl₂ cell grows **lithium dendrites** on the anode — there is no reversible plating mechanism in this chemistry. A dendrite bridging to the cathode is an internal short and thermal runaway. The cell contains thionyl chloride; venting releases SO₂ and HCl, and the electrolyte reacts violently with water. This is a sealed enclosure on the roof of an occupied building, heading for a production line.
+- Your argument (v5): *"Both cells measured ~3.65 V when we bought them. If they are at the same voltage, no current flows between them, so where is the danger? Nothing bad has happened."* That is correct at the moment of assembly and it is why nothing has happened yet. It does not hold over the life of the pack, for four reasons:
+  1. **They do not stay matched.** No two cells discharge identically. Internal impedance spread, a temperature gradient across the holder (one cell nearer the sun-facing wall runs hotter), differing passivation film thickness and differing self-discharge all mean one cell delivers more current than the other. The divergence compounds over 24 months.
+  2. **The exposure is after each pulse, not at rest.** During a 120 mA TX burst the lower-impedance cell supplies most of the current and therefore sags further. The instant the pulse ends, the two cells sit at different voltages with **zero resistance between them**, and current flows from the higher into the lower. That is a charging current. It is small early in life and grows as they diverge.
+  3. **End of life is the dangerous window.** Li-SOCl₂ has a famously flat discharge curve that falls off a cliff at the end. When one cell reaches its knee and the other has not, the healthy cell drives the **full voltage difference** into a nearly-exhausted cell through essentially zero resistance, continuously. This is exactly the condition the manufacturer warnings are written about, and it happens at 18–24 months — the end of your target life.
+  4. **"Nothing bad happened" is the expected observation right now.** The pack is new and matched; the failure mode is an aging phenomenon. Weeks of bench time carries no information about month 20. This is the same age-correlation that makes HW-042 dangerous.
+- Recommended fix, in order of preference:
+  1. **Use one larger cell instead of two AAs — this deletes the problem rather than managing it.** A single **LS26500 (C size, ~7.7 Ah)** gives more capacity than two LS14500s (5.2 Ah) in one cell, with no paralleling, no diodes, no diode voltage drop, one fewer connector and one fewer assembly step. An **LS17500 (A size, ~3.6 Ah)** is the smaller option if 3.6 Ah is enough — but note the power budget puts total consumption at ~2.2 Ah over two years, so a single LS14500 at ~2.2 Ah usable is **not** enough on its own. **This is the recommendation.**
+  2. **Keep two cells and add a series Schottky per cell.** Acceptable, but be aware of the interaction: at 120 mA the drop is roughly 0.25 V per diode, which comes straight out of the headroom that **HW-042** and **HW-008** are already short of. Check reverse leakage at 60 °C, since that is a permanent drain. Add a PTC or fuse in the pack lead.
+  3. **Keep as-is.** Not acceptable while this is a blocker.
+- Notes: If you decide to keep the parallel pack after reading the above, say so and I will move this to WON'T FIX with the residual risk recorded — that is your call to make, not mine. But get the specific guidance from SAFT's own handling documentation for the LS series before deciding; do not rely on my summary for a safety item.
+- Notes: Option 1 also improves HW-032 (passivation) and HW-042 (droop), because a larger cell has lower internal impedance and sags less under the TX pulse.
+
+---
 
 ### HW-004 — No ground plane and no copper pour anywhere on the PCB
 - Severity: BLOCKER
@@ -51,17 +42,7 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Recommended fix: Respin as a **4-layer board** (signal / GND / VBAT / signal) — at this board size the cost delta is small and it removes a whole class of problems at once. If you must stay 2-layer: pour solid GND_SW on the bottom, route signals on top, stitch the pour with vias every ~5 mm, keep an unbroken plane under the Ra-02 footprint, and widen VBAT and GND_SW to ≥1.5 mm. Board is currently ~90 × 68 mm, so there is plenty of room.
 - Notes: This respin is where HW-001, HW-007, HW-013, HW-015, HW-017, HW-018 and HW-029 should all be fixed together.
 
-### HW-005 — RCWL-1670 electronics have no defined environmental protection in a condensing headspace
-- Severity: BLOCKER
-- Status: NEEDS INFO
-- Component / net: RCWL-1670 module, J5
-- Problem: The module in the photos is a **bare, uncoated PCB** with two transducers soldered to it. The tank headspace it looks into is at or near 100 % RH and will condense every time the tank refills with cool water or the roof cools at night. Nothing in the design says where this PCB physically lives or how it is protected. Its rated operating range is −25 °C to +85 °C, 5–95 % RH — the tank headspace is outside the humidity rating.
-- Impact: Corrosion and dendrite growth on an uncoated PCB in a condensing environment is a matter of months, not years. Condensate on the transducer faces also attenuates the echo and causes intermittent dropouts — which read as bad level data, not as a fault. Threatens NFR-2 and NFR-3.
-- Recommended fix: Decide the mechanical arrangement, then protect accordingly:
-  - Keep the **PCB inside the sealed enclosure** and bring only the two transducers into the headspace on a short cable through a potted feedthrough; or
-  - Conformally coat / pot the module PCB (leaving the transducer faces clear) and mount it as a sealed sub-assembly.
-  Either way, add a small **drip shield / sun shield** over the transducer faces so condensate running down the tank roof cannot pool on them.
-- Notes: **Questions for you:** (1) Is your RCWL-1670 the variant with the transducers soldered to the board, or the variant with them on flying leads? (2) Where do you intend to physically mount the module relative to the tank lid? (3) Roughly what is the tank headspace temperature range at your site?
+---
 
 ### HW-006 — LoRa band, region and legal radiated power are undefined
 - Severity: BLOCKER
@@ -74,6 +55,36 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 
 ---
 
+### HW-001 — Ultrasonic harness is a cross-over cable with no controlled drawing
+- Severity: MAJOR *(reduced from BLOCKER in v5)*
+- Status: OPEN
+- Component / net: J5 (4-pin), sensor harness, RCWL-1670
+- Problem: The schematic defines J5 as **1=GND, 2=VCC, 3=Echo, 4=Trig**; the RCWL-1670's pads are **GND, RX (=TRIG), TX (=ECHO), +5V**. Position-for-position, pins 2 and 4 are swapped. You have confirmed the module is never plugged directly into the header — it lives in its own enclosure inside the tank and is reached by a 4-wire cable, and you know the correct order. So this is no longer a functional defect on the built article. What remains is that **the harness is a cross-over cable, and nothing in the design documents says so.**
+- Impact: On a production line an operator building a harness from the schematic, or from an ordinary pin-1-to-pin-1 convention, will build it straight-through. That harness puts VBAT on the module's TRIG input and the MCU's D6 output onto the module's supply pin. It looks identical to a correct one, so it passes visual inspection and fails at functional test — or worse, damages the MCU pin. Fails the "repeatable assembly" half of NFR-6.
+- Recommended fix: Make a straight-through harness correct, so the cross-over cannot be built wrong:
+  1. **Re-order J5 in the schematic and PCB to 1=GND, 2=Trig, 3=Echo, 4=VCC**, matching the module's physical pad order. Then a 1:1 cable is the right cable and there is nothing to get wrong.
+  2. Print the four signal names on the silkscreen beside J5 (HW-038).
+  3. Whatever order you settle on, issue the harness as a **controlled drawing** — wire colours, both connector pinouts, length — and put it in the BOM (HW-033). A cross-over cable that exists only in someone's head is not a production document.
+- Notes (v5): Downgraded because you confirmed the assembly method and that the pinout is known. Not closed, because the schematic still disagrees with the hardware and the harness is undocumented. It closes when the schematic is corrected or the harness drawing exists.
+
+---
+
+### HW-005 — Ultrasonic sensor enclosure, transducer feedthrough and condensation management
+- Severity: MAJOR *(reduced from BLOCKER in v5)*
+- Status: NEEDS INFO
+- Component / net: RCWL-1670, its enclosure, J5 harness
+- Problem: The module is a bare, uncoated PCB and the tank headspace is at or near 100 % RH — outside the module's own 5–95 % RH rating. You have confirmed the intended arrangement: **the ultrasonic gets its own waterproof enclosure mounted inside the tank at the top, and the Hydro Node sits outside the tank nearby.** That addresses the main concern in principle. What is not yet defined is the part that actually decides whether it survives: how the transducers get out of that enclosure, and what happens to condensate.
+- Impact: The transducer faces must be exposed to the headspace air to work, so the enclosure necessarily has an opening or a feedthrough at exactly the point that is hardest to seal — and it is the coldest surface in a saturated space, so it is where water condenses first. Condensate on a transducer face attenuates the echo and causes dropouts that read as bad level data rather than as a fault. Threatens NFR-2 and NFR-3.
+- Recommended fix:
+  - **Pot the transducer feedthrough**, do not gasket it. Two-part polyurethane or silicone potting around the transducer barrels, with the PCB in the dry side of the enclosure.
+  - **Conformally coat the module PCB anyway**, as a second barrier. It costs almost nothing and the enclosure will eventually breathe.
+  - Add a **drip shield** above the transducer faces so condensate running down the underside of the tank lid cannot fall onto or pool on them.
+  - Orient the assembly so the transducer faces point straight down and nothing can sit on them.
+  - The enclosure needs its own **breather membrane** for the same reason as the main one (HW-028) — a sealed box that swings 40 °C daily will pump moisture in.
+- Notes: **Questions still open:** (1) Is your RCWL-1670 the variant with the transducers soldered to the board, or on flying leads? Flying leads make the potted feedthrough much easier. (2) What is the tank material and lid construction — this decides how both the sensor enclosure and the cable penetration (HW-045) get mounted. (3) Roughly what temperature range does the headspace see at your site?
+
+---
+
 ### HW-007 — Ra-02: only one of its three GND pins is connected
 - Severity: MAJOR
 - Status: OPEN
@@ -83,6 +94,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Recommended fix: Connect all three GND pins to the ground pour. In a 2-layer respin, tie them to the pour with a short, wide connection and stitch around the module footprint.
 - Notes: Also connect J1 pin 4 (RST) — already done via D9 — and consider bringing DIO1 out to a spare pin; some LoRa stacks use DIO1 for RX-timeout and CAD-done, which the pairing protocol (Stage 6) may want.
 
+---
+
 ### HW-008 — Ra-02 fed directly from a fresh Li-SOCl₂ cell, at the top of its rated supply range
 - Severity: MAJOR
 - Status: OPEN
@@ -91,6 +104,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: No design margin on the most expensive and most failure-sensitive part on the board. Also, an unregulated rail that sags under a 120 mA TX pulse means the PA sees a moving supply — output power and frequency stability both move with it.
 - Recommended fix: Either (a) add a low-Iq LDO (target quiescent < 2 µA, e.g. a 3.0–3.3 V part) feeding the Ra-02 and the MCU, accepting ~0.3 V of dropout headroom loss; or (b) keep the direct connection and formally accept the risk, but then you must measure the rail at the module during TX across the full temperature range and confirm it never exceeds 3.7 V. Option (a) also stabilises the ADC reference and the ultrasonic drive amplitude, which helps NFR-2.
 - Notes: The SX1278 silicon's absolute maximum is 3.9 V, so this is a margin issue rather than an immediate destruction risk — but "operating at the datasheet limit" is exactly the kind of thing that passes on a bench and fails in a batch.
+
+---
 
 ### HW-009 — C3 (2200 µF aluminium electrolytic) is the wrong part in the wrong place
 - Severity: MAJOR
@@ -106,6 +121,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   - **Pulse support for the cell:** if measurement shows the cell voltage dipping too far during TX, add a **hybrid layer capacitor (HLC) or a 0.1–0.5 F supercapacitor** charged through a current-limiting resistor. This is the standard Li-SOCl₂ + LoRa arrangement and it is the correct answer to the pulse problem. Budget the supercap's own leakage (typically 5–50 µA) into the power model before committing — it may cost more than it saves.
 - Notes: First measure. Put a scope on VBAT during a real TX burst at −5 °C and at 50 °C, on a cell that has been sitting idle for a week (see HW-032). If the dip is acceptable, you may not need any pulse-support part at all and can delete C3 outright, which is the cheapest possible fix.
 
+---
+
 ### HW-010 — No reverse-polarity protection on the battery input
 - Severity: MAJOR
 - Status: OPEN
@@ -114,6 +131,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: On a production line with hand-crimped battery leads, reversed packs happen. One reversal is a scrapped board, not a recoverable fault.
 - Recommended fix: Add a **series P-channel MOSFET ideal-diode** in the VBAT line (gate to ground through a resistor, source to battery, drain to the rail). Costs ~20 mΩ and essentially zero quiescent current, and it does not eat the 0.2–0.3 V that a Schottky would — which matters when the cell plateau is only 3.6 V. Note that the per-cell blocking diodes from HW-003 give partial protection but do not cover a reversed connector.
 - Notes: Combine with HW-011 — a keyed, non-interchangeable battery connector plus the P-FET makes this failure mode essentially impossible.
+
+---
 
 ### HW-011 — Battery and flow-switch connectors are both 2-pin JST-XH and are interchangeable
 - Severity: MAJOR
@@ -124,6 +143,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Recommended fix: Make them physically impossible to swap. Use a **different connector family or a different key for the battery** (e.g. JST-PH 2-pin or a polarised 2-pin locking connector for the battery, keep XH for the sensors), and add function names to the silkscreen (see HW-038).
 - Notes: Cheapest possible fix; do it in the same respin.
 
+---
+
 ### HW-012 — No ESD or surge protection on any of the three external sensor cables
 - Severity: MAJOR
 - Status: OPEN
@@ -132,6 +153,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: Direct ESD hits during installation, and induced surges from nearby lightning, will kill MCU pins. The 1-Wire line (D4) is the classic victim — it is a long, high-impedance, pulled-up line. A dead pin on a sealed rooftop device is a truck roll.
 - Recommended fix: On each externally-exposed line: a **low-capacitance TVS/ESD array to ground** (choose < 5 pF for the echo and 1-Wire lines so you do not slow the edges), plus a **100 Ω series resistor** at the MCU pin. Ensure the TVS ground is the pour, close to the connector. Also fit a TVS across the supply feeding the ultrasonic module.
 - Notes: The 100 Ω series resistors are nearly free and also limit fault current if a cable shorts to the rail.
+
+---
 
 ### HW-013 — Decoupling is wrong: only two bypass caps, neither local to any device
 - Severity: MAJOR
@@ -145,6 +168,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   - CD4013 VDD (pin 14): 100 nF — this one is genuinely absent today.
   - Ultrasonic supply at J5: 100 nF + 10 µF (it draws 6 mA in bursts down a cable).
 - Notes: Ceramic X7R throughout; leakage is negligible so this costs nothing in the power budget.
+
+---
 
 ### HW-014 — Reed latch has no series resistor and no effective debounce
 - Severity: MAJOR
@@ -163,6 +188,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Notes (v2): The Schmitt buffer requirement is now coupled to the U1 part choice — see **HW-041**. If U1 becomes an **SN74HCS74**, every input is already Schmitt-triggered with no transition-rate requirement, and the separate buffer is deleted (the series resistor and the RC are still required). If U1 stays **CD4013BE** or becomes a plain **74HC74**, the buffer is mandatory — and more so for the 74HC74, which is the least tolerant of slow edges of the three.
 - Notes: **Verification of the latch as drawn, per your Section 6 item 6.** I traced it from the extracted netlist: U1 is wired as a T-flip-flop (D1 ← Q1̄, pin 5 ← pin 2), CLOCK1 ← reed node, Q1 (pin 1) → R2 1 kΩ → Q1 gate, R1 1 MΩ gate pulldown to the raw battery return. SET1, SET2, RESET2, CLOCK2, D2 are all correctly tied to VSS; the unused half's outputs are correctly left open. C2 (100 nF from VBAT) with R4 (100 kΩ to VSS) is a correct **active-high power-on-reset** giving ~10 ms — so the device powers up OFF when a cell is first fitted. **Toggle logic is correct and the OFF state is genuinely clean:** with Q1 off, every resistive path (R1, R3, R4) sits at 0 V across it, C2 and C4 are ceramic, and the only OFF-state current is the MOSFET's leakage plus the CD4013's quiescent (< 1 µA at 25 °C). I have no objection to the concept — only to the debounce, the contact protection, and the placement (HW-015).
 
+---
+
 ### HW-015 — Reed switch is mounted in the centre of the PCB
 - Severity: MAJOR
 - Status: OPEN
@@ -171,6 +198,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: Unreliable or impossible actuation — the primary and only user control on a sealed device (FR-6, NFR-5). Magnet field falls off steeply; 30 mm of extra distance can easily be the difference between working and not.
 - Recommended fix: Move S1 to a **board edge**, oriented along its sensitive axis, as close to the enclosure wall as clearance allows. Mark the spot on the outside of the enclosure (embossed target in the print). Then verify the actual pull-in distance with the production magnet and the production wall thickness, and specify a minimum magnet grade in the BOM.
 - Notes: Also see HW-039 — the bare glass reed body is mechanically fragile. If you adopt the Hall-sensor alternative there, this placement problem gets easier because a Hall device is small and can sit right at the wall.
+
+---
 
 ### HW-016 — Blue LED has no forward-voltage headroom on a 3.0–3.6 V rail
 - Severity: MAJOR
@@ -181,6 +210,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Recommended fix: Use a **red or yellow LED (Vf ≈ 1.8–2.1 V)**, which leaves 1.0–1.8 V across the resistor across the whole cell life. Size R5 for 2 mA (it only ever flashes briefly), so ~680 Ω–1 kΩ. Make the schematic, the BOM and the fitted part agree.
 - Notes (v4): **This is no longer cosmetic.** The LED is now the confirmation mechanism for the magnet on/off control (HW-043, HW-044), so a blue LED going dark at ~3.0 V means the user-facing control loses its feedback exactly as the battery ages — the point at which someone is most likely to be on the roof investigating. Treat the change to a red or yellow part as required, not optional.
 - Notes: There is also a **BOM/schematic value mismatch** here — the BOM lists a 220 Ω resistor, the schematic says 330 Ω. Whichever survives, one document is wrong today.
+
+---
 
 ### HW-017 — IRLZ44N is the wrong MOSFET, in the wrong package, in the wrong place
 - Severity: MAJOR
@@ -194,6 +225,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Recommended fix: Replace with a small **SOT-23 logic-level N-channel MOSFET explicitly specified at V_GS = 2.5 V**, with a datasheet I_DSS in the nanoamp range at low V_DS. Mount it flat on the board inside the outline. Keep R1 (1 MΩ pulldown) and R2 (1 kΩ gate series) as they are — that part is correct.
 - Notes: While you are here, decide whether you still want a master hardware latch at all. See the note under HW-021.
 
+---
+
 ### HW-018 — Echo is on D7 instead of D8, so hardware input capture is unavailable
 - Severity: MAJOR
 - Status: OPEN
@@ -202,6 +235,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: `pulseIn` at 8 MHz resolves to roughly ±4 µs, and a pin-change ISR adds 1–2 µs of latency jitter. That is only ±0.7 mm of distance error so it is not fatal — but ICP1 gives a hardware timestamp at 125 ns resolution with zero interrupt-latency jitter, it is completely free, and it lets the MCU sleep during the flight time instead of spinning in a blocking loop (which also saves awake energy). Given NFR-2 explicitly drives this design, leaving a free hardware timer on the table is not defensible.
 - Recommended fix: **Swap them — Echo to D8, LED to D7.** One net change in the respin, no cost, no extra parts.
 - Notes: This also means the ultrasonic measurement no longer blocks the CPU, which shortens the awake window and helps NFR-1.
+
+---
 
 ### HW-019 — HT-60 flow switch: a 220 VAC contact switched dry at ~110 µA
 - Severity: MAJOR
@@ -215,6 +250,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   I recommend (2) as an addition regardless of which sensor you use, because it also protects against the same problem in any replacement part.
 - Notes: **Question: is your HT-60 normally-open (closes on flow) or normally-closed?** Confirm before firmware. Also confirm its minimum actuation flow rate against your actual fill rate — if the fill is slower than the switch's threshold, it will never trip.
 
+---
+
 ### HW-020 — Flow input D5 has no external pull-up, no filter and no series protection
 - Severity: MAJOR
 - Status: OPEN
@@ -223,6 +260,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: Three separate problems. (a) If firmware leaves the internal pull-up enabled during sleep while the switch is closed, that is **~110 µA continuous** — on its own about half of the entire allowable average current for the 2-year target. (b) An unfiltered mechanical contact on a long cable will produce chatter and pick up noise. (c) No series protection (see HW-012).
 - Recommended fix: Add an **external 1 MΩ pull-up** to the switched rail plus a **100 nF** cap to ground at the connector (giving a 100 ms RC filter, which is fine for a flow signal that changes on a timescale of seconds), and a **100 Ω** series resistor at the MCU pin. 1 MΩ costs 3.6 µA when the switch is closed, and the internal pull-up can then stay off permanently. Combine with the wetting-pulse scheme from HW-019 for the actual sampling.
 - Notes: Firmware must still be explicit: internal pull-up **disabled** before sleeping, every time.
+
+---
 
 ### HW-021 — The MCU cannot read the reed line and cannot command its own shutdown
 - Severity: MAJOR
@@ -239,6 +278,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Notes (v3): **DECIDED — the hardware latch stays.** You argued that a firmware-independent off is required on a sealed device, and that is the stronger position: a hung or crashed MCU can still be switched off with a magnet, which the MCU-sleep alternative cannot offer. The ~5 µA saving is not worth that. This issue therefore shrinks to just adding the two wires (reed sense + firmware shutdown), and those are now folded into **HW-043**. The alternative below is recorded for history only — do not implement it.
 - Notes: Alternative architecture, **rejected in v3**, recorded for history: delete the CD4013, Q1, R1, R2 and C2 entirely. Make the MCU always powered, put it in power-down (~4.5 µA) as the "OFF" state, and switch the ultrasonic and LoRa rails with small load switches. The reed then just drives a wake interrupt. This removes a whole subsystem, gives firmware full control over the on/off state, and costs ~5 µA in storage (≈88 mAh over a year on shelf — under 2 % of the pack). The one thing you lose is a true zero-power OFF for long-term storage. **Your call — tell me which way you want to go and I will rework the affected issues.**
 
+---
+
 ### HW-022 — No local unpair or recovery path on a sealed Node
 - Severity: MAJOR
 - Status: OPEN
@@ -247,6 +288,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: A dead Hub bricks every Node on the site. That is a support and warranty problem, not just an engineering one.
 - Recommended fix: Implement HW-021's reed-sense line, then define a **magnet gesture** for local unpair — e.g. hold the magnet on the target for 10 seconds *after* power-on, confirmed by a distinctive LED pattern. This preserves the intent of FR-7 (no accidental unpairing, Hub is the normal path) while giving a documented field-recovery route. Firmware-only once the sense wire exists.
 - Notes: Raised now because it costs one PCB net; retrofitting it after the respin is expensive. The protocol details belong in Stage 6.
+
+---
 
 ### HW-023 — A single air-temperature sensor cannot represent the headspace thermal gradient
 - Severity: MAJOR
@@ -260,6 +303,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   3. Longer term, if you need better than ~1 %: a **fixed reference reflector** at a precisely known distance in the beam, so the firmware measures the actual speed of sound every cycle and cancels temperature, humidity and clock error in one step. Honest caveat: HC-SR04-compatible modules report only the *first* echo, so this needs a module that exposes the raw echo envelope or supports multi-echo. Not achievable with the RCWL-1670.
 - Notes: **Humidity is a second, smaller term.** Saturated air raises the speed of sound by roughly 0.35–0.6 % versus dry air at 30–40 °C, which is +7 to +12 mm at 2 m. A tank headspace is essentially always saturated, so this one is easy — apply a fixed saturated-air correction constant on the Hub and most of it disappears. Note that this correction lives on the **Hub**, consistent with your Section 2 split.
 
+---
+
 ### HW-024 — Pro Mini 8 MHz clock source is unknown (crystal vs ceramic resonator)
 - Severity: MAJOR
 - Status: NEEDS INFO
@@ -269,6 +314,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Recommended fix: Identify the part on your actual modules. If it is a resonator, put a **±30 ppm crystal (or a TCXO) on the Node PCB** when you move the MCU onto the board (HW-026). If you must ship with a resonator, calibrate each unit's timebase at production test against a known reference distance and store the correction factor in EEPROM — which is a real production step with real cost, and is a good argument for just fitting a crystal.
 - Notes: **Please photograph the clock component on one of your modules, or tell me the exact board variant.** SparkFun and the various clone vendors do not all use the same part.
 
+---
+
 ### HW-025 — No battery voltage or health telemetry
 - Severity: MAJOR
 - Status: OPEN
@@ -277,6 +324,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: For a 2-year sealed field device this is a serious operational gap. You cannot schedule replacement, cannot distinguish "Node is dead" from "Node is out of range", and cannot detect a bad cell batch before it becomes a field campaign.
 - Recommended fix: **Use the ATmega328P's internal bandgap reference measured against VCC.** This needs **zero extra components and zero leakage** — you set the ADC mux to the 1.1 V bandgap with AVcc as the reference, read it, and compute VCC = 1.1 × 1024 / ADC. Send the raw ADC count to the Hub and let the Hub do the conversion, per your Section 2 split. Do not use a resistive divider: any divider across VBAT leaks continuously unless you MOSFET-gate it, which is more parts for a worse answer.
 - Notes: For Li-SOCl₂ the open-circuit voltage is famously flat, so absolute voltage tells you little about remaining capacity. The genuinely useful signal is the **loaded voltage dip during the LoRa TX burst** — sample VCC mid-transmission. A dip that grows over months is the real end-of-life and passivation indicator. Log both.
+
+---
 
 ### HW-026 — Entirely through-hole, socketed modules, hand assembly — not viable at production volume
 - Severity: MAJOR
@@ -290,6 +339,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   - Move to **SMD 0402/0603 1 % metal-film resistors and X7R ceramics**, SOT-23 for Q1.
   - Keep the reed (or Hall device, HW-039) and the connectors as the only through-hole parts, for a single selective-solder or hand-solder step.
 - Notes: This is the largest single change on the list, and it is the one that most directly serves "a full manufacturing line will start once the design is finalized". It also resolves HW-002 permanently rather than by rework. Worth deciding early, because it changes the schematic substantially and there is no point fixing the small things twice.
+
+---
 
 ### HW-027 — PETG-CF enclosure vs rooftop UV and temperature; FDM prints are not watertight
 - Severity: MAJOR
@@ -306,6 +357,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   - For watertightness, either **pot or conformally coat the PCB** and treat the enclosure as splash protection only, or **use an off-the-shelf IP66/67 polycarbonate enclosure** and print only the internal carrier and the tank-mount bracket. At production volume the off-the-shelf enclosure is almost certainly cheaper, more reliable, and already certified.
 - Notes: I know NFR-4 specifies PETG-CF and I am not overriding that — this is the recommendation and the reasoning; the decision is yours. If you want to stay with PETG-CF, the sun shield becomes mandatory rather than optional, and I would want the internal temperature logged over a full summer before sign-off.
 
+---
+
 ### HW-028 — No condensation management inside the sealed enclosure
 - Severity: MAJOR
 - Status: OPEN
@@ -317,6 +370,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   2. **Conformal coating** on the assembled PCB (acrylic or silicone), masking the connectors.
   3. A **desiccant pack** inside, sized for the enclosure volume — cheap insurance and it belongs in the BOM.
 - Notes: The breather vent is the important one. Without it, a sealed box on a roof is a condensation pump.
+
+---
 
 ### HW-029 — No test points and no production programming or test interface
 - Severity: MAJOR
@@ -330,6 +385,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   - A **production self-test firmware mode** that exercises every sensor, reports over the UART, and measures its own sleep current draw against the test fixture — run before the enclosure is closed.
 - Notes: Also give each board a **serial number** (a QR/DataMatrix label plus a value in EEPROM). You will need it for the pairing protocol in Stage 6, for field support on a sealed device, and for traceability if a batch goes bad.
 
+---
+
 ### HW-030 — Tank geometry is unknown — beam angle versus sidewall echoes
 - Severity: MAJOR
 - Status: NEEDS INFO
@@ -338,6 +395,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: Systematically wrong level readings that do not look like a fault. Threatens NFR-2 fundamentally, and it is a mechanical problem that no amount of firmware can fix after the fact.
 - Recommended fix: I need the tank dimensions to size this. Then the standard mitigations are: centre the sensor in the tank; keep it clear of the fill pipe, the outlet and any internal structure; and if the geometry is tight, fit a **stilling well / waveguide** (a smooth vertical tube of 75–100 mm bore running down from the sensor) which confines the beam, kills sidewall returns and also damps surface ripple. A waveguide is the standard industrial answer and it would substantially improve NFR-2.
 - Notes: **Please give me: tank internal diameter (or length × width), tank height, typical mounting height of the sensor above the maximum water level, and whether the tank is plastic or metal.** Also whether the fill pipe discharges above or below the water line — an above-water fill produces splashing directly in the beam.
+
+---
 
 ### HW-031 — LoRa airtime versus the 2-minute wake interval: the budget only closes at SF7–SF9
 - Severity: MAJOR
@@ -357,6 +416,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Recommended fix: Fix SF ≤ 9 as a hard design constraint and design the link budget (antenna, mounting, Hub placement) to close within it. Then, to buy margin back, consider an **adaptive interval**: a water tank's level changes slowly, so sample every 5 minutes when idle and every 60 seconds when the flow switch says the tank is filling. That cuts the active budget by roughly 2.5× while *improving* the data where it actually matters. It is a change to FR-5, so it is your call — I am flagging it, not assuming it.
 - Notes: Full per-wake model for SF7: MCU wake/init 65 ms @ 4 mA; DS18B20 9-bit conversion 94 ms @ 5 mA; 5× ultrasonic cycles 250 ms @ 10 mA; LoRa config/ramp 50 ms @ 10 mA; TX 60 ms @ 100 mA; housekeeping 80 ms @ 4 mA. Total ≈ 600 ms and 10.05 mA·s = 2.79 µAh per wake, i.e. an 84 µA equivalent average. Add ~20 µA of sleep current after the fixes above and you land at ~104 µA average, which is **4.8 years** — a healthy 2.4× margin on NFR-1. That margin is what pays for the things this model has not counted: retries, cold-temperature capacity loss, and pairing traffic.
 
+---
+
 ### HW-032 — Li-SOCl₂ passivation: no depassivation strategy
 - Severity: MAJOR
 - Status: OPEN
@@ -369,81 +430,6 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   3. Log the loaded voltage during TX (HW-025) so passivation is visible in the telemetry rather than being inferred after a failure.
   4. Confirm the exact procedure and timings against the cell manufacturer's application note — do not invent these numbers.
 - Notes: The HLC/supercapacitor option under HW-009 largely sidesteps this problem, because the capacitor rather than the cell supplies the pulse. That is another point in its favour and another reason to measure before committing.
-
----
-
-### HW-033 — BOM omissions
-- Severity: MINOR
-- Status: OPEN
-- Component / net: BOM
-- Problem: Comparing the BOM against the schematic and the assembly, the following are used but not listed: the **two 8-pin headers/sockets for the Ra-02** (J1, J2 — the largest single omission), the **battery holder or cell tabs** (the LS14500s in the photo are bare button-top cells with no tabs), a **DIP-14 socket** if one is used for U1, the **PCB itself**, cable glands, enclosure hardware and fasteners, conformal coating, desiccant, and the enclosure gasket.
-- Impact: An incomplete BOM means an incomplete kit at the production line and unbudgeted cost.
-- Recommended fix: Rebuild the BOM from the schematic's designator list rather than by hand, add a mechanical/consumables section, and add a **manufacturer part number and a lifecycle status** column for every line. Cross-check every designator appears exactly once.
-- Notes: Also add: LoRa antenna, IPEX-to-SMA pigtail (listed), SMA bulkhead gasket, and the actuating magnet (listed, but with no grade or dimensions specified — see HW-015).
-
-### HW-034 — C3 voltage rating mismatch between BOM and supplied part
-- Severity: MINOR
-- Status: OPEN
-- Component / net: C3
-- Problem: The BOM and schematic both specify 2200 µF **16 V**; the component photo shows a 2200 µF **25 V** part. Electrically the 25 V part is fine, but the can diameter differs (typically 13 mm vs 10 mm), so it may not match the PCB footprint or the enclosure clearance.
-- Impact: Fit problem at assembly; documentation does not describe the built article.
-- Recommended fix: Moot if HW-009 is adopted and C3 is deleted or replaced with ceramics. If C3 survives in any form, make the BOM, schematic, footprint and purchased part agree, and specify the diameter and lead pitch explicitly.
-- Notes: Flagged mainly because it is a symptom — the BOM and the built board have drifted apart in at least three places (this, HW-016's LED colour, and HW-016's resistor value). Worth a full reconciliation pass.
-
-### HW-035 — Unused MCU I/O left floating will add sleep current if not configured
-- Severity: MINOR
-- Status: OPEN
-- Component / net: U2 — A0–A7, D0, D1, DTR, and the unconnected Ra-02 DIO lines
-- Problem: Nine analogue pins plus the UART pins are unconnected. A floating CMOS input sits near its switching threshold and its input stage draws crossbar current; several floating pins can add tens of microamps.
-- Impact: Silent addition to sleep current — precisely the kind of thing that makes a measured power budget disagree with the calculated one.
-- Recommended fix: Firmware must explicitly configure **every** unused pin before sleeping — either as an input with the internal pull-up enabled, or as an output driven low. Add this to the Stage 7 checklist and make it a measured pass/fail. It is a firmware fix, but it is recorded here because it is a power-path issue and it will be forgotten otherwise.
-- Notes: In the respin, tie genuinely unused pins to ground through pads so the state is defined by hardware rather than by remembering.
-
-### HW-036 — Carbon-film ½ W resistors throughout
-- Severity: MINOR
-- Status: OPEN
-- Component / net: R1–R6
-- Problem: All six resistors are ½ W axial carbon film (±5 % typical, and a temperature coefficient in the −200 to −1000 ppm/°C region). They are also physically large for a board that should be moving to SMD.
-- Impact: Low, in this circuit — none of these resistors is in a precision path. R6 (the 1-Wire pull-up) and R3/R4 (the RC networks) all tolerate ±5 % easily. The real cost is size and assembly method.
-- Recommended fix: Move to **0603 1 % metal-film** in the respin, for placement by machine and for a defined tempco. Not urgent on its own — bundle it with HW-026.
-- Notes: Recorded for completeness; this is the lowest-priority item on the list.
-
-### HW-037 — CD4013BE in a plastic DIP
-- Severity: MINOR
-- Status: OPEN
-- Component / net: U1
-- Problem: The CD4013BE is a 14-pin plastic DIP. If it is socketed (as the through-hole build style suggests), the socket contacts oxidise over years in a humid, thermally-cycling outdoor enclosure, and vibration can back the part out.
-- Impact: An intermittent contact in the power-latch IC means the device randomly turns off, or fails to turn on, in the field.
-- Recommended fix: Use the **SOIC-14 version soldered directly** (CD4013BM or equivalent). If U1 survives the architecture decision under HW-021 at all, do not socket it. Confirm the quiescent current and the operating temperature range against your chosen vendor's datasheet — the family covers −55 °C to +125 °C and 3–18 V, which is comfortable here, but I want the specific part's Iq over temperature in the power model rather than an assumption.
-- Notes: I also want to check one specification I could not retrieve during this review: most CD4013B datasheets state a **maximum clock input rise/fall time** (I believe around 15 µs at V_DD = 5 V, but treat that as unverified until you or I read the vendor datasheet). As drawn today the *active* rising edge at CLOCK1 is fast, so the spec is probably not violated — but the moment you add the series resistor from HW-014 it will be, which is exactly why HW-014 also calls for a Schmitt-trigger buffer. **Please confirm the number from your part's datasheet.**
-- Notes (v2): Partly superseded by **HW-041**. The package question here (SOIC, not socketed DIP) stands regardless of which logic family wins.
-
-### HW-038 — Connector functions are not on the silkscreen; DS18B20 wire order is undocumented
-- Severity: MINOR
-- Status: OPEN
-- Component / net: J3, J4, J5, battery connector
-- Problem: The silkscreen shows reference designators (J4, J5, …) but not what plugs into them or what each pin does. The DS18B20 waterproof probe ships as three flying wires with no connector, so the crimp order is a build instruction that exists nowhere in the documentation.
-- Impact: Assembly errors, and field-service errors. Combined with HW-011's interchangeable 2-pin connectors, this is how a battery ends up in the flow-switch socket.
-- Recommended fix: Silkscreen every connector with its function and its pin-1 signal name — `TEMP  1:DATA 2:GND 3:VCC`, `FLOW`, `ULTRASONIC  1:GND 2:TRIG 3:ECHO 4:VCC`, `BATTERY +/−`. Add a wire-colour table to the assembly drawing (the DS18B20 probe's usual convention is red = VDD, black or blue = GND, yellow or white = DATA, but **verify it on your actual probes** — clone probes are not consistent, and a swapped VDD/DATA will destroy the sensor).
-- Notes: Free to fix in the respin, and it prevents several of the more expensive mistakes on this list.
-
-### HW-039 — Reed switch is a bare glass body with long unsupported leads
-- Severity: MINOR
-- Status: OPEN
-- Component / net: S1
-- Problem: The reed in the photo is a bare glass envelope (4 × 29 mm) with long thin leads. From the 3D view it stands vertically off the board with nothing supporting the body.
-- Impact: Glass reeds crack from shock, and unsupported leads fatigue under vibration. This is the device's only user control and it is inside a sealed enclosure, so a failure is unrecoverable in the field.
-- Recommended fix: At minimum, use a **plastic-encapsulated or moulded reed**, mount it lying flat against the board, and secure the body with a dab of adhesive. Better: replace it with a **micropower Hall-effect sensor** (for example a device sampling at ~20 Hz for around 1.5 µA average). Solid-state, tiny, no glass, no bounce, and a clean digital output — which also removes the debounce problem in HW-014 and makes the placement problem in HW-015 much easier. The cost is ~1.5 µA of continuous current, which is negligible against the 251 µA budget, and it only applies in the ON state.
-- Notes: A latching Hall device would let you keep the toggle behaviour in the sensor itself. If you go with the "delete the CD4013" architecture from HW-021, an omnipolar Hall sensor driving an MCU interrupt is the natural pairing.
-
-### HW-040 — Antenna: no RF keep-out, and the SMA bulkhead is an unmanaged sealing penetration
-- Severity: MINOR
-- Status: OPEN
-- Component / net: Ra-02 IPEX connector, SMA pigtail, enclosure
-- Problem: The PCB has no RF keep-out region around the module, and the antenna leaves the enclosure through an SMA bulkhead — a metal penetration in a sealed wall that nothing in the design specifies how to seal. There is also no defined antenna position relative to the tank, which for a metal tank matters a great deal.
-- Impact: Reduced range (which, per HW-031, you cannot compensate for by raising the spreading factor), and a water-ingress path straight into the electronics.
-- Recommended fix: Keep copper and metal away from the module's antenna feed area; specify a **gasketed/O-ring SMA bulkhead** with a defined torque, and add thread sealant to the assembly instructions. Define the antenna's mounting position and orientation in the installation guide — vertical, clear of the tank body, and if the tank is metal, mounted off it rather than against it. Verify the installed link budget on a real roof before locking the SF choice from HW-031.
-- Notes: A cheaper and more reliable alternative for a sealed product is an **external antenna on a short pigtail mounted through a single gland**, or an internal antenna if the enclosure and the range allow it. Worth evaluating once HW-006 fixes the band.
 
 ---
 
@@ -480,6 +466,8 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Notes: **This issue is currently unquantified and must be measured before Stage 7 can sign off.** Scope VBAT at U1 pin 14 during a real +18 dBm transmission, on **cells that have been left idle for at least a week** so passivation is present, at room temperature and at the coldest temperature the product will see. Record the minimum. If the measured floor is below the fitted logic's minimum supply, **this escalates to BLOCKER**.
 - Notes: The same droop also affects the ATmega328P (which needs ≥2.4 V at 8 MHz, and will reset if the BOD fuse is set to 2.7 V) and the Ra-02 (1.8 V minimum, so it is fine). The difference is that an MCU reset is recoverable — it reboots and carries on — whereas a lost latch state is not.
 
+---
+
 ### HW-043 — Reed input needs real debounce; magnet retains full on/off control
 - Severity: MAJOR
 - Status: IN DISCUSSION
@@ -496,6 +484,116 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Notes (v4): Your LED indicator also changes the analysis in favour of the toggle. A blink-on-startup turns an ambiguous toggle into a **self-correcting** one — the installer sees no blink, taps again. That converts a silent failure into a visible retry and defuses most of the original concern. It is why this issue is now "add proper debounce" rather than "change the topology". The dependency it creates is covered in HW-016 and HW-044.
 - Notes: A hardware-timed alternative was evaluated and **not recommended**: tap = ON via PRE, hold ~3 s = OFF via an RC timer into CLR, keeping both directions firmware-independent while making bounce structurally impossible. It works, but it needs a Schmitt inverter, a low-leakage timing capacitor, two resistors and a steering diode — about five extra parts and a tuning exercise — for a control that is used roughly five times in the product's life. The complexity does not earn its place. Recorded in `HYDRO-NODE-REFERENCE.md` §9 in case the field data later says otherwise.
 
+---
+
+### HW-045 — Tank-wall penetration and in-tank connector for the sensor harness
+- Severity: MAJOR
+- Status: NEEDS INFO
+- Component / net: J5 harness, tank wall/lid, ultrasonic enclosure
+- Problem: The confirmed mechanical arrangement — Node outside the tank, ultrasonic inside — means a 4-wire cable must cross the tank wall or lid. Nothing in the design defines that penetration, the connector at the in-tank end, or the materials in contact with the water or its headspace. This is new information from v5 and had no issue before now.
+- Impact: Three separate risks:
+  1. **Water ingress and contamination.** A hole in a water tank is a leak path both ways — water out, and dirt, insects and light in. Light entering a tank promotes algae growth.
+  2. **Potable water compliance.** If this tank supplies drinking water, every material in contact with the water or the headspace air — cable jacket, gland, potting compound, enclosure — must be rated for potable contact. This is a regulatory matter in most markets, not a preference.
+  3. **The in-tank connector.** Any connector inside the headspace sits in saturated air. A JST-XH will corrode. The cable must either run unbroken into the potted sensor enclosure, or terminate in a genuinely IP68 connector.
+- Recommended fix:
+  - Use a proper **cable gland rated IP68** through the lid, with the correct cable diameter, and a drip loop below it on the inside so water runs off rather than tracking along the jacket.
+  - Prefer a **single unbroken cable** from the Node enclosure to the potted sensor assembly — no connector inside the tank at all. Terminate only at the Node end, where it is dry and serviceable.
+  - Specify a **potable-rated cable jacket and gland** if the tank is for drinking water, and record the certification in the BOM.
+  - Where possible penetrate the **lid, not the wall** — a lid penetration is above the waterline and any leak is a drip, not a drain.
+- Notes: **Question for you: is this tank potable water or non-potable (irrigation, flushing, cooling)?** The answer changes the material specification and possibly the certification path, so I need it before the mechanical design can be signed off.
+- Notes: The cable also runs within centimetres of a 433 MHz PA. Keep it away from the antenna, and see HW-012 — the ESD and series-resistor protection on D6/D7 matters more now that the run is longer and passes through a wall.
+
+---
+
+### HW-033 — BOM omissions
+- Severity: MINOR
+- Status: OPEN
+- Component / net: BOM
+- Problem: Comparing the BOM against the schematic and the assembly, the following are used but not listed: the **two 8-pin headers/sockets for the Ra-02** (J1, J2 — the largest single omission), the **battery holder or cell tabs** (the LS14500s in the photo are bare button-top cells with no tabs), a **DIP-14 socket** if one is used for U1, the **PCB itself**, cable glands, enclosure hardware and fasteners, conformal coating, desiccant, and the enclosure gasket.
+- Impact: An incomplete BOM means an incomplete kit at the production line and unbudgeted cost.
+- Recommended fix: Rebuild the BOM from the schematic's designator list rather than by hand, add a mechanical/consumables section, and add a **manufacturer part number and a lifecycle status** column for every line. Cross-check every designator appears exactly once.
+- Notes: Also add: LoRa antenna, IPEX-to-SMA pigtail (listed), SMA bulkhead gasket, and the actuating magnet (listed, but with no grade or dimensions specified — see HW-015).
+
+---
+
+### HW-034 — C3 voltage rating mismatch between BOM and supplied part
+- Severity: MINOR
+- Status: OPEN
+- Component / net: C3
+- Problem: The BOM and schematic both specify 2200 µF **16 V**; the component photo shows a 2200 µF **25 V** part. Electrically the 25 V part is fine, but the can diameter differs (typically 13 mm vs 10 mm), so it may not match the PCB footprint or the enclosure clearance.
+- Impact: Fit problem at assembly; documentation does not describe the built article.
+- Recommended fix: Moot if HW-009 is adopted and C3 is deleted or replaced with ceramics. If C3 survives in any form, make the BOM, schematic, footprint and purchased part agree, and specify the diameter and lead pitch explicitly.
+- Notes: Flagged mainly because it is a symptom — the BOM and the built board have drifted apart in at least three places (this, HW-016's LED colour, and HW-016's resistor value). Worth a full reconciliation pass.
+
+---
+
+### HW-035 — Unused MCU I/O left floating will add sleep current if not configured
+- Severity: MINOR
+- Status: OPEN
+- Component / net: U2 — A0–A7, D0, D1, DTR, and the unconnected Ra-02 DIO lines
+- Problem: Nine analogue pins plus the UART pins are unconnected. A floating CMOS input sits near its switching threshold and its input stage draws crossbar current; several floating pins can add tens of microamps.
+- Impact: Silent addition to sleep current — precisely the kind of thing that makes a measured power budget disagree with the calculated one.
+- Recommended fix: Firmware must explicitly configure **every** unused pin before sleeping — either as an input with the internal pull-up enabled, or as an output driven low. Add this to the Stage 7 checklist and make it a measured pass/fail. It is a firmware fix, but it is recorded here because it is a power-path issue and it will be forgotten otherwise.
+- Notes: In the respin, tie genuinely unused pins to ground through pads so the state is defined by hardware rather than by remembering.
+
+---
+
+### HW-036 — Carbon-film ½ W resistors throughout
+- Severity: MINOR
+- Status: OPEN
+- Component / net: R1–R6
+- Problem: All six resistors are ½ W axial carbon film (±5 % typical, and a temperature coefficient in the −200 to −1000 ppm/°C region). They are also physically large for a board that should be moving to SMD.
+- Impact: Low, in this circuit — none of these resistors is in a precision path. R6 (the 1-Wire pull-up) and R3/R4 (the RC networks) all tolerate ±5 % easily. The real cost is size and assembly method.
+- Recommended fix: Move to **0603 1 % metal-film** in the respin, for placement by machine and for a defined tempco. Not urgent on its own — bundle it with HW-026.
+- Notes: Recorded for completeness; this is the lowest-priority item on the list.
+
+---
+
+### HW-037 — CD4013BE in a plastic DIP
+- Severity: MINOR
+- Status: OPEN
+- Component / net: U1
+- Problem: The CD4013BE is a 14-pin plastic DIP. If it is socketed (as the through-hole build style suggests), the socket contacts oxidise over years in a humid, thermally-cycling outdoor enclosure, and vibration can back the part out.
+- Impact: An intermittent contact in the power-latch IC means the device randomly turns off, or fails to turn on, in the field.
+- Recommended fix: Use the **SOIC-14 version soldered directly** (CD4013BM or equivalent). If U1 survives the architecture decision under HW-021 at all, do not socket it. Confirm the quiescent current and the operating temperature range against your chosen vendor's datasheet — the family covers −55 °C to +125 °C and 3–18 V, which is comfortable here, but I want the specific part's Iq over temperature in the power model rather than an assumption.
+- Notes: I also want to check one specification I could not retrieve during this review: most CD4013B datasheets state a **maximum clock input rise/fall time** (I believe around 15 µs at V_DD = 5 V, but treat that as unverified until you or I read the vendor datasheet). As drawn today the *active* rising edge at CLOCK1 is fast, so the spec is probably not violated — but the moment you add the series resistor from HW-014 it will be, which is exactly why HW-014 also calls for a Schmitt-trigger buffer. **Please confirm the number from your part's datasheet.**
+- Notes (v2): Partly superseded by **HW-041**. The package question here (SOIC, not socketed DIP) stands regardless of which logic family wins.
+
+---
+
+### HW-038 — Connector functions are not on the silkscreen; DS18B20 wire order is undocumented
+- Severity: MINOR
+- Status: OPEN
+- Component / net: J3, J4, J5, battery connector
+- Problem: The silkscreen shows reference designators (J4, J5, …) but not what plugs into them or what each pin does. The DS18B20 waterproof probe ships as three flying wires with no connector, so the crimp order is a build instruction that exists nowhere in the documentation.
+- Impact: Assembly errors, and field-service errors. Combined with HW-011's interchangeable 2-pin connectors, this is how a battery ends up in the flow-switch socket.
+- Recommended fix: Silkscreen every connector with its function and its pin-1 signal name — `TEMP  1:DATA 2:GND 3:VCC`, `FLOW`, `ULTRASONIC  1:GND 2:TRIG 3:ECHO 4:VCC`, `BATTERY +/−`. Add a wire-colour table to the assembly drawing (the DS18B20 probe's usual convention is red = VDD, black or blue = GND, yellow or white = DATA, but **verify it on your actual probes** — clone probes are not consistent, and a swapped VDD/DATA will destroy the sensor).
+- Notes: Free to fix in the respin, and it prevents several of the more expensive mistakes on this list.
+
+---
+
+### HW-039 — Reed switch is a bare glass body with long unsupported leads
+- Severity: MINOR
+- Status: OPEN
+- Component / net: S1
+- Problem: The reed in the photo is a bare glass envelope (4 × 29 mm) with long thin leads. From the 3D view it stands vertically off the board with nothing supporting the body.
+- Impact: Glass reeds crack from shock, and unsupported leads fatigue under vibration. This is the device's only user control and it is inside a sealed enclosure, so a failure is unrecoverable in the field.
+- Recommended fix: At minimum, use a **plastic-encapsulated or moulded reed**, mount it lying flat against the board, and secure the body with a dab of adhesive. Better: replace it with a **micropower Hall-effect sensor** (for example a device sampling at ~20 Hz for around 1.5 µA average). Solid-state, tiny, no glass, no bounce, and a clean digital output — which also removes the debounce problem in HW-014 and makes the placement problem in HW-015 much easier. The cost is ~1.5 µA of continuous current, which is negligible against the 251 µA budget, and it only applies in the ON state.
+- Notes: A latching Hall device would let you keep the toggle behaviour in the sensor itself. If you go with the "delete the CD4013" architecture from HW-021, an omnipolar Hall sensor driving an MCU interrupt is the natural pairing.
+
+---
+
+### HW-040 — Antenna: no RF keep-out, and the SMA bulkhead is an unmanaged sealing penetration
+- Severity: MINOR
+- Status: OPEN
+- Component / net: Ra-02 IPEX connector, SMA pigtail, enclosure
+- Problem: The PCB has no RF keep-out region around the module, and the antenna leaves the enclosure through an SMA bulkhead — a metal penetration in a sealed wall that nothing in the design specifies how to seal. There is also no defined antenna position relative to the tank, which for a metal tank matters a great deal.
+- Impact: Reduced range (which, per HW-031, you cannot compensate for by raising the spreading factor), and a water-ingress path straight into the electronics.
+- Recommended fix: Keep copper and metal away from the module's antenna feed area; specify a **gasketed/O-ring SMA bulkhead** with a defined torque, and add thread sealant to the assembly instructions. Define the antenna's mounting position and orientation in the installation guide — vertical, clear of the tank body, and if the tank is metal, mounted off it rather than against it. Verify the installed link budget on a real roof before locking the SF choice from HW-031.
+- Notes: A cheaper and more reliable alternative for a sealed product is an **external antenna on a short pigtail mounted through a single gland**, or an internal antenna if the enclosure and the range allow it. Worth evaluating once HW-006 fixes the band.
+
+---
+
 ### HW-044 — The LED cannot confirm a power-off, and carries no state information
 - Severity: MINOR
 - Status: OPEN
@@ -510,9 +608,25 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 
 ---
 
+### HW-046 — Check the Pro Mini for a D13 LED; D13 is the LoRa SPI clock
+- Severity: MINOR
+- Status: NEEDS INFO
+- Component / net: U2 D13, J2 pin 5 (SCK)
+- Problem: D13 on this design is **SCK for the Ra-02 SPI bus**. Many Arduino-compatible boards fit an LED plus series resistor on D13. If your module has one, it is across the SPI clock line.
+- Impact: Two effects, neither fatal but both worth removing. The LED loads the clock edge and adds capacitance to the highest-frequency net on the board, and it draws current on every SPI transaction — roughly a milliamp during each clock high, throughout every transmission, several times per wake for the whole life of the product.
+- Recommended fix: Inspect one of your modules. If a D13 LED is fitted, remove it along with the power LED and regulator you have already taken off (HW-002) — same rework step, no extra cost. If it is not fitted, close this issue.
+- Notes: The genuine SparkFun Pro Mini is generally fitted with a power LED only, but clone modules vary between batches and this is worth two minutes with a magnifier. **Tell me what you find and I will close or action it.**
+
 ## RESOLVED / WON'T FIX
 
-*(Nothing resolved yet — this is the initial review.)*
+### HW-002 — Arduino Pro Mini on-board power LED and MIC5205 regulator are permanently powered  ✅ RESOLVED (v5)
+- Original problem: The design feeds the battery straight into the Pro Mini's VCC pin, but the module's own always-on parts stayed in circuit — the power LED (~1–3 mA) and the MIC5205 LDO back-fed through its output pin (~50 µA). Sleep current was therefore ~2 mA instead of ~10–25 µA, giving roughly 88 days of battery life against a 2-year target.
+- Resolution: **The power LED and the MIC5205 regulator are removed from every module, and this is already done on the current build.** Confirmed by you, 2026-08-19.
+- Residual, tracked elsewhere — not reasons to reopen:
+  - The per-unit rework burden at production volume is **HW-026** (put the ATmega328P directly on the board). Hand-reworking a hobby module on every unit is not a manufacturable process, and this resolution depends on it being done correctly every time.
+  - The **BOD fuse** is a separate setting and still costs ~20 µA in sleep if left enabled. Disable it. Tracked under HW-035 and the Stage 7 checklist.
+  - The claimed sleep current is still **unmeasured**. Stage 7 must confirm ~4.5–10 µA on a bench supply. If the measurement disagrees, that is a new finding, not a reopening of this one.
+- Notes: See also **HW-046** — check whether your specific module also carries a D13 LED, because D13 is the LoRa SPI clock.
 
 ---
 
@@ -520,6 +634,7 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 
 | Version | Date | Change |
 |---|---|---|
+| v5 | 2026-08-19 | **HW-002 → RESOLVED** (LED and MIC5205 removed per module, already done on the current build). HW-001 BLOCKER → MAJOR and reframed — assembly method confirmed, but the harness is a cross-over cable with no controlled drawing. HW-005 BLOCKER → MAJOR and reframed around the transducer feedthrough now that the sensor gets its own in-tank enclosure. HW-003 → IN DISCUSSION with a full answer to the matched-voltage argument; single larger cell (LS26500) now the preferred fix. Added HW-045 (tank-wall penetration, in-tank connector, potable-water materials) and HW-046 (check for a D13 LED on the SPI clock). Blockers 6 → 3. |
 | v4 | 2026-08-19 | HW-043 rewritten — the v3 firmware-only-OFF proposal is **withdrawn**; it contradicted HW-021's own reasoning by making OFF firmware-dependent. Magnet keeps full on/off control; the fix is a Schmitt buffer plus an inverted 1 MΩ reed connection (also drops magnet-resting standby from 360 µA to 3.6 µA). Added HW-044 (LED cannot confirm power-off, carries no state). HW-016 escalated in emphasis — the LED is now load-bearing. HW-014 Schmitt buffer requirement reinstated. HW-041 note updated; part decision unchanged. |
 | v3 | 2026-08-19 | Added HW-042 (latch rail hold-up — TX droop can switch the device off permanently) and HW-043 (move the latch from edge-triggered toggle to asynchronous PRE/CLR). HW-041 raised MINOR → MAJOR: your droop argument is the real justification, not the characterisation gap; 74HC74 confirmed as the part. HW-021 DECIDED — hardware latch stays, MCU-sleep alternative rejected. HW-014 contact-wear argument withdrawn (~5 operations in service) and its Schmitt buffer superseded by HW-043. |
 | v2 | 2026-08-19 | Added HW-041 (logic family for U1: CD4013BE vs 74HC74 vs SN74HCS74; SN74HCS74 recommended). Updated HW-014 notes — the Schmitt-buffer requirement is now conditional on the HW-041 outcome. Updated HW-037 notes. |
