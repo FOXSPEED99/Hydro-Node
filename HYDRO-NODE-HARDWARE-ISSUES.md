@@ -1,5 +1,5 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v13   |   Last updated: 2026-08-19   |   Status: Stage 0 review — 2 blockers; single-cell option now recommended for HW-003
+Version: v14   |   Last updated: 2026-08-19   |   Status: Stage 0 review — HW-003 decided (two cells, isolated); 2 blockers pending implementation
 
 ## STATUS SUMMARY
 Total issues: 52   |   Open: 48   |   Resolved: 3   |   Won't fix: 1
@@ -12,7 +12,7 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ### HW-003 — Two LS14500 Li-SOCl₂ cells hard-paralleled with no blocking diodes
 - Severity: BLOCKER
-- Status: IN DISCUSSION
+- Status: OPEN — decision made in v14, pending implementation
 - Component / net: Battery connector, VBAT / GND_RAW
 - Problem: The two cells are wired directly in parallel. Lithium-thionyl-chloride primary cells must never be charged, and two directly-paralleled cells will push current into one another as they diverge. Cell manufacturers require a **series blocking diode per cell** whenever primary lithium cells are paralleled.
 - Impact: Forcing current into a Li-SOCl₂ cell grows **lithium dendrites** on the anode — there is no reversible plating mechanism in this chemistry. A dendrite bridging to the cathode is an internal short and thermal runaway. The cell contains thionyl chloride; venting releases SO₂ and HCl, and the electrolyte reacts violently with water. This is a sealed enclosure on the roof of an occupied building, heading for a production line.
@@ -21,34 +21,32 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
   2. **The exposure is after each pulse, not at rest.** During a 120 mA TX burst the lower-impedance cell supplies most of the current and therefore sags further. The instant the pulse ends, the two cells sit at different voltages with **zero resistance between them**, and current flows from the higher into the lower. That is a charging current. It is small early in life and grows as they diverge.
   3. **End of life is the dangerous window.** Li-SOCl₂ has a famously flat discharge curve that falls off a cliff at the end. When one cell reaches its knee and the other has not, the healthy cell drives the **full voltage difference** into a nearly-exhausted cell through essentially zero resistance, continuously. This is exactly the condition the manufacturer warnings are written about, and it happens at 18–24 months — the end of your target life.
   4. **"Nothing bad happened" is the expected observation right now.** The pack is new and matched; the failure mode is an aging phenomenon. Weeks of bench time carries no information about month 20. This is the same age-correlation that makes HW-042 dangerous.
-- Recommended fix (v13, reordered — **option 1 closes this issue outright**):
+- **DECISION (v14): two LS14500 in parallel, isolated, supplied as a sealed pack. Keep the 2-year target.** The v13 single-cell recommendation is withdrawn — the 50 m / thick-concrete link distance, given in v14, makes the radio settings uncertain enough that a one-cell design is not safe to commit to.
 
-  | # | Option | Deletes the hazard? | Cost |
-  |---|---|---|---|
-  | **1** | **One cell, 1.5-year target, +14 dBm** | **Yes — nothing to parallel** | Fewer parts, lower cost |
-  | 2 | Two cells, sealed non-serviceable pack | Mostly — removes the realistic case | Free |
-  | 3 | Two cells + Schottky per cell | Yes | ~0.25 V headroom |
-  | 4 | Two cells + ideal-diode IC per cell | Yes | ~4 mV, but sourcing |
+  | Item | Part | Purpose |
+  |---|---|---|
+  | Cells | 2 × LS14500 | 4.4 Ah usable; ~50 mA per cell at +18 dBm, inside the 50 mA rating |
+  | Isolation | 2 × **`1N5819`** (40 V, 1 A, DO-41), one in each cell's **+** leg | Blocks inter-cell charging. ~0.25 V at 50 mA, ~0.1 V at sleep currents |
+  | Protection | 1 × **0.5 A fast-blow fuse** in the pack lead (`0451.500` SMD or 5×20 mm glass) | **Not a PTC** — an MF-R025's ~1 Ω costs 120 mV at 120 mA, the same headroom as a diode, for no benefit |
+  | Assembly | **Sealed, non-serviceable pack, single JST connector** | Makes single-cell replacement physically impossible — that is the realistic hazard, not slow aging divergence |
 
-  **Option 1 — drop to one cell.** You proposed relaxing the target to 1–1.5 years. That does not work as a *safety* mitigation (see below), but it does something better: it makes a single cell sufficient, and a single cell cannot be paralleled with anything. Margins on one LS14500 (2.2 Ah usable), with per-packet acknowledgements budgeted:
+  Added cost: roughly five cents of diodes plus a fuse.
+- Why two cells and not one — what the link distance did to the analysis: at 50 m through thick concrete the required spreading factor is genuinely uncertain, and SF drives energy far harder than TX power does. Two-year margins:
 
-  | TX power | 1.0 yr | 1.5 yr | 2.0 yr |
-  |---|---|---|---|
-  | +18 dBm | 2.26× | 1.51× | 1.13× |
-  | +14 dBm | 3.01× | **2.01×** | 1.50× |
+  | | ONE cell (2.2 Ah) | | | TWO cells (4.4 Ah) | | |
+  |---|---|---|---|---|---|---|
+  | | +14 dBm | +18 dBm | +20 dBm | +14 dBm | +18 dBm | +20 dBm |
+  | SF7 | 1.57× | 1.21× | 1.12× | 3.14× | 2.43× | 2.24× |
+  | SF9 | **1.02×** | FAILS | FAILS | **2.04×** | 1.27× | 1.11× |
+  | SF10 | FAILS | FAILS | FAILS | 1.36× | FAILS | FAILS |
 
-  At **+14 dBm the peak current is ~45 mA, which is inside the LS14500's 50 mA continuous rating** — so the pulse-current argument that motivated paralleling in the first place also disappears. One cell, +14 dBm, 1.5-year replacement interval gives a 2× margin with no paralleling, no diodes, no voltage drop, one connector, and a cheaper BOM. **This is now my recommendation.**
-
-  **Option 2 — if you keep two cells, make the pack non-serviceable.** See the risk reframing below: the realistic danger is not slow aging divergence, it is a user replacing *one* cell. If the pack is supplied as a sealed assembly — two cells permanently joined, one connector, replaced as a unit — that scenario becomes impossible. Costs nothing, and it is better for a consumer product anyway. It does not remove the aging-divergence risk entirely, so it is second, not first.
-
-  **Options 3 and 4 — real part numbers, since you asked:**
-  - **Schottky, through-hole:** `1N5819` — 40 V, 1 A, DO-41. Cheap, available everywhere including local shops, and matches your current through-hole board. Run well below its rating so V_F is low: expect roughly 0.25–0.30 V at 50 mA and ~0.1 V at sleep currents. **Measure V_F on your actual parts at 50 mA before trusting the headroom numbers in §10.4.**
-  - **Schottky, surface mount:** `SS14` (SMA/DO-214AC, same 40 V 1 A silicon) or `PMEG2010AEH` / `PMEG3020BEP` (Nexperia, SOD-123, lower V_F than the 1N5819).
-  - **Ideal-diode IC** — this is the term you could not find, because "ideal-diode controller" is a category, not a part. Searchable names: **`LM66100`** (Texas Instruments, SOT-23-6, 1.5–5.5 V, 1.5 A, ~79 mΩ on-resistance, ~79 nA quiescent — at 50 mA that is about 4 mV instead of 250 mV), **`MAX40200`** (Analog Devices, SOT-23, 1 A), or **`LTC4412`** (Analog Devices, needs an external P-FET). The LM66100 is the best fit; verify quiescent current and availability before committing.
-  - **Fuse — use a plain fuse, not a PTC.** A resettable PTC such as the `MF-R025` has 0.9–1.2 Ω of resistance, which at 120 mA is 108–144 mV — it eats the same headroom as a diode, for no benefit. A plain **0.5 A fast-blow** fuse (`0451.500` SMD, or a 5×20 mm glass fuse in a clip) has near-zero resistance. This corrects the "PTC or fuse" wording in earlier versions.
-- Why relaxing the target does **not** fix the safety issue: the hazard appears when the pack is nearly depleted and one cell reaches its end-of-life knee before the other. Shortening the *stated* life does not change when the cells actually deplete — the device keeps running past 18 months because nobody climbs to the roof on schedule, and it runs until it dies. To use a shorter target as a mitigation you would have to make the device **shut itself down** at a measured state of charge, which needs the battery telemetry from **HW-025** and the firmware shutdown path from **HW-021**. That is more work, not less. Relaxing the target is useful because it enables option 1, not because it avoids the hazard.
-- Risk reframing (v13, and this is fairer to your original design): with **matched cells from the same batch, installed together, discharged together, sitting centimetres apart in one enclosure**, the aging-divergence risk is genuinely modest — my earlier blanket statement overstated it for that case. The realistic danger for a consumer product is different: **a user replaces one cell and not both.** A fresh 3.67 V cell in parallel with a depleted one drives a large, sustained charging current into the old cell through zero resistance. That is not a slow aging effect, it is an immediate hazard created by an ordinary user action — and it is exactly what option 2 prevents for free.
-- Notes: If you choose option 1, tell me and I will close this issue and rework HW-042 and §10 around a single cell. If you choose to keep the cells hard-paralleled with no mitigation at all, say so and I will move this to WON'T FIX with the residual recorded — that remains your call.
+  One cell survives only if the link turns out easy. Two cells cover every plausible outcome. **And two cells is the reversible choice**: if Stage 5 measures an easy link you simply fit one cell and ship, with no board or mechanical change — whereas committing to one cell and then discovering you need SF9 means a respin. Design for the case you cannot yet measure.
+- Bench verification before this is closed:
+  1. **Measure the actual `1N5819` forward drop at 50 mA** on your parts. I have assumed 0.25 V, and the worst-case rail figures in `HYDRO-NODE-REFERENCE.md` §10.4 and the HW-042 margin both depend on it.
+  2. Confirm the Ra-02 still starts and transmits cleanly with the diodes fitted, on cells left idle a week (passivation, HW-032).
+  3. Confirm the sealed pack assembly cannot be opened to replace a single cell without obvious destruction.
+- Notes: This issue moves to RESOLVED once the diodes and fuse are fitted and the pack is built as a sealed unit. The severity stays BLOCKER until then, because the hazard exists on the current hardware.
+- Notes: The risk reframing from v13 stands and is why the sealed pack matters as much as the diodes: with matched cells discharged together in one enclosure, aging divergence is modest; the realistic hazard is a user putting a fresh 3.67 V cell across a depleted one.
 
 ---
 
@@ -526,6 +524,17 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
   4. **Fix the antenna before raising the PA.** Going from +14 to +20 dBm is 6 dB and costs roughly 2.7× the transmit energy on every single packet, forever. Going from a whip lying against a metal tank to a properly mounted vertical whip with a ground plane, clear of the tank body, is easily 6–10 dB **and costs nothing**. Spend the link budget on the antenna first, then decide how much PA you actually need.
 - Notes: Also relevant to the Stage 6 pairing protocol — proximity-gated pairing depends on RSSI, and a congested channel makes RSSI gating less reliable. Worth choosing the channel before designing the pairing handshake.
 - Notes: If you eventually deploy many Nodes per Hub, consider putting different Hubs on different channels rather than relying on address filtering alone. Decide this before the first production run, because changing it later means touching every installed device.
+- Notes (v14): **Link distance received — up to 50 m with thick concrete walls in between. This is now the highest-uncertainty item in the design**, because it sets the spreading factor, which drives the energy budget harder than TX power does (see the table in HW-003). Modelled scenarios, free-space at 50 m being 59 dB:
+
+  | Scenario | Total path loss | Result |
+  |---|---|---|
+  | 2 walls × 12 dB | 83 dB | Closes at SF7 with ~44 dB spare |
+  | 3 walls × 18 dB | 113 dB | Closes at SF7 with ~14 dB spare |
+  | 4 walls × 25 dB | 159 dB | **Fails at every power and every SF, including +20 dBm at SF12** |
+
+  If a real installation lands near the third row, no radio setting fixes it — it is a siting problem, and the answers are a better antenna, Hub relocation or a repeater. **This must be measured in a real building during Stage 5, before the design is frozen.**
+- Notes (v14): **Put the antenna gain at the Hub, not the Node.** The Hub is mains powered, so a 3–5 dBi antenna there costs zero Node battery and adds margin in *both* directions — the Node's transmissions and its acknowledgements. Every dB gained at the Hub is a dB the Node does not have to pay for on every packet for two years. Do this before considering any increase in Node TX power.
+- Notes (v14): 433 MHz was the right band choice for this link. Lower frequencies penetrate concrete considerably better than 868 MHz or 2.4 GHz would, so the earlier suggestion to consider 868 MHz (raised under HW-006 for EU compliance) is **withdrawn** now that Syria imposes no limit — stay at 433 MHz.
 
 ---
 
@@ -821,6 +830,7 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 | Version | Date | Change |
 |---|---|---|
+| v14 | 2026-08-19 | Link distance received — 50 m through thick concrete. **HW-003 DECIDED: two LS14500 in parallel, isolated with one `1N5819` per cell, 0.5 A fuse in the pack lead, supplied as a sealed non-serviceable pack; 2-year target kept.** The v13 single-cell recommendation is withdrawn: at 50 m through concrete the required spreading factor is uncertain, one cell only survives SF7 (SF9 gives 1.02×), and two cells cover every plausible outcome — and two cells is the *reversible* choice, since an easy measured link means simply fitting one, whereas the reverse needs a respin. HW-047 updated with the three modelled link scenarios; the worst (4 walls × 25 dB = 159 dB) fails at +20 dBm and SF12, which would be a siting problem not a radio one, so Stage 5 must measure it in a real building. Also recorded: put antenna gain at the mains-powered Hub where it costs no Node battery and helps both directions, and stay at 433 MHz — the earlier 868 MHz suggestion is withdrawn now that concrete penetration matters more than EU compliance. |
 | v13 | 2026-08-19 | HW-003 recommended fix reordered. **A single LS14500 at +14 dBm on a 1.5-year target gives a 2.01× margin and a ~45 mA peak that is inside the cell's 50 mA continuous rating** — so relaxing the target enables a one-cell design, which deletes the paralleling hazard outright rather than mitigating it. Now the recommendation. Recorded that relaxing the target does **not** work as a safety mitigation on its own, since the cells still deplete on their own schedule. Risk reframed more fairly: matched cells discharged together diverge modestly; the realistic hazard is a user replacing one cell of two, which a sealed non-serviceable pack prevents for free. Added concrete searchable part numbers (1N5819, SS14, PMEG2010AEH, LM66100, MAX40200, LTC4412) and corrected the earlier "PTC or fuse" advice — a PTC's 0.9–1.2 Ω costs the same headroom as a diode, so use a plain 0.5 A fuse. |
 | v12 | 2026-08-19 | HW-019 updated from a photo of the physical part. Confirmed WY-90 DC 12–24 V, 万阳 brand, two-wire dry contact. **Recorded the flow-direction arrow as an installation requirement** — fitted backwards the switch never closes, and the failure is silent and indistinguishable from "no water was used", so it needs a marked step in the installation guide and a commissioning check. Also recorded that the contact has no polarity and that the bare-stripped leads need crimped terminations. No severity change; no new issues. |
 | v11 | 2026-08-19 | **HW-019 MAJOR → MINOR and rewritten** — the original review was based on the HT-60 (AC 220 V) in the component photos; the part actually fitted is a **WY-90, DC 12–24 V**, almost certainly a sealed reed, so the mains-contact argument is withdrawn. Added the contact-physics explanation: voltage fritts the surface film at 0.3–0.5 V so 3.6 V is fine, but the ~110 µA from the internal pull-up is far below the part's designed current — the label's "12~24 V" is a maximum switching rating, not a minimum. Wetting pulse retained as cheap insurance at 0.5 % of the energy budget. HW-033 updated — this is the fourth documentation-vs-hardware mismatch and the first to have caused a wrong severity, so a full BOM reconciliation is now overdue. |
