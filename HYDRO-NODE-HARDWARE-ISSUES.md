@@ -1,10 +1,10 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v8   |   Last updated: 2026-08-19   |   Status: Stage 0 review — tank geometry computed; beam containment is now a blocker
+Version: v9   |   Last updated: 2026-08-19   |   Status: Stage 0 review — measurement range pinned down; beam containment de-escalated
 
 ## STATUS SUMMARY
-Total issues: 50   |   Open: 48   |   Resolved: 2   |   Won't fix: 0
-Blockers remaining: 3
-Production-ready: NO — the ultrasonic beam is wider than the tank across most of the range and will lock onto internal obstructions, the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, and the PCB has no ground plane.
+Total issues: 52   |   Open: 50   |   Resolved: 2   |   Won't fix: 0
+Blockers remaining: 2
+Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, and the PCB has no ground plane.
 
 ---
 
@@ -53,37 +53,6 @@ Production-ready: NO — the ultrasonic beam is wider than the tank across most 
   - **EMC:** an unplaned board with a 433 MHz PA and 300 mm of unshielded sensor cable is a radiator and a receiver. It will be hard to pass emissions testing and easy to upset.
 - Recommended fix: Respin as a **4-layer board** (signal / GND / VBAT / signal) — at this board size the cost delta is small and it removes a whole class of problems at once. If you must stay 2-layer: pour solid GND_SW on the bottom, route signals on top, stitch the pour with vias every ~5 mm, keep an unbroken plane under the Ra-02 footprint, and widen VBAT and GND_SW to ≥1.5 mm. Board is currently ~90 × 68 mm, so there is plenty of room.
 - Notes: This respin is where HW-001, HW-007, HW-013, HW-015, HW-017, HW-018 and HW-029 should all be fixed together.
-
----
-
-### HW-030 — The ultrasonic beam is wider than the tank across most of the measurement range
-- Severity: BLOCKER *(raised from MAJOR in v8)*
-- Status: OPEN
-- Component / net: RCWL-1670, mechanical mounting
-- Problem: With tank sizes now known (500 / 1000 / 2000 L, plastic and metal) the geometry can be computed, and it does not work. An open-air 40 kHz transducer pair of this class has a beam of roughly 60–75° full angle. Beam width is D = 2·d·tan(θ/2), so at a 60° beam the cone is already **1.15 m across at 1 m** and **1.73 m at 1.5 m**. The distance at which the cone first reaches the sidewall, with the sensor centred:
-
-  | Beam | 500 L (⌀0.80 m) | 1000 L (⌀1.00 m) | 2000 L (⌀1.30 m) |
-  |---|---|---|---|
-  | 75° | 0.52 m | 0.65 m | 0.85 m |
-  | 60° | 0.69 m | **0.87 m** | 1.13 m |
-  | 45° | 0.97 m | 1.21 m | 1.57 m |
-
-  Your measurement range starts at 0.7 m and runs to at least 1.5 m. **The beam is illuminating tank internals across essentially the whole useful range.**
-- Impact: A smooth vertical wall at grazing incidence mostly reflects *away*, so the wall itself is not the main threat. The threat is that **the module reports the first echo above threshold, and any object inside that cone returns one.** Every rooftop tank has a float valve and a fill pipe near the top. At a 60° beam the cone is 0.58 m wide at only 0.5 m down, so a float valve 0.3 m off-axis is inside it. The sensor then locks onto the valve at a fixed short distance and reports **"tank full" permanently** — a stable, plausible reading that is completely wrong and never alarms. Corners where the water surface meets the wall are retroreflective and return strongly too. This will break a large fraction of installations, and it is a mechanical problem that no firmware filtering can recover.
-- Recommended fix, in order of preference:
-  1. **Stilling well.** A vertical smooth-bore tube from the sensor down through the measurement range. This is the standard industrial answer: it confines the beam, eliminates every sidewall and obstacle echo, and damps surface ripple as a bonus. Sizing is not arbitrary — at 40 kHz the wavelength is **8.6 mm**, so the bore must be many wavelengths across to guide cleanly:
-
-     | Bore | Wavelengths | Verdict |
-     |---|---|---|
-     | 50 mm | 5.8 λ | Marginal — higher loss, mode problems |
-     | 75 mm | 8.7 λ | Good |
-     | 100–110 mm | 12–13 λ | Good — **use standard 110 mm PVC drain pipe** |
-
-     Must be vertical, smooth inside, with no steps or joints in the measured span — any discontinuity is an echo. Perforate near the bottom so the level inside tracks the tank.
-  2. **Specify the mounting position as a controlled installation requirement**: sensor centred on the tank, minimum clearance from the fill pipe, float valve, outlet and any internal structure, computed from the beam table above. Cheaper than a well, but it depends on installers following it, and in a 500 L tank there may be no position that clears everything.
-  3. **Change the measurement principle.** Since you cannot control what tank a customer has, a **submersible hydrostatic pressure sensor** measures the water column directly and is immune to beam angle, tank shape, tank material, obstacles and surface scum — the entire class of problems in this issue and in HW-048 disappears. Costs: a wetted part in a potable-rated tank, a vented cable for atmospheric reference (or a gauge sensor plus a separate barometric reading at the Hub), and it is a significant architecture change. Recorded honestly as the more robust option, not pushed.
-- Notes (v8): This conflicts directly with **HW-048** — a stilling well will collect scum inside it, and in an uncleaned tank that could be worse than no well. The two must be decided together: a 110 mm bore with generous bottom perforations and a serviceable, liftable well is the compromise, but it needs the tank hatch to be reachable.
-- Notes: **Ambiguity I need resolved.** "Sensor 0.7–1.5 m above max water" reads two ways: (a) the sensor sits 0.7–1.5 m above the *full* water line, so the far end of the range is 0.7–1.5 m plus the tank depth, up to ~3 m; or (b) 0.7–1.5 m is the *total* span from sensor to tank bottom. Reading (a) pushes the far end toward the module's 4 m limit with a 3.1 m wide beam, which makes everything above worse. Blind zone is not a concern either way — the module's 2 cm minimum clears both. **Which is it?**
 
 ---
 
@@ -330,18 +299,17 @@ Production-ready: NO — the ultrasonic beam is wider than the tank across most 
 - Component / net: J3, DS18B20
 - Problem: FR-2 corrects the speed of sound using one DS18B20 in the headspace. But on a sunlit rooftop tank, the air touching the hot tank roof can be 15–25 °C warmer than the air just above the cool water. The ultrasonic pulse travels through that entire gradient, so what matters is the **path-average** temperature — and a single sensor mounted near the sensor (i.e. at the hot end) systematically over-estimates it.
 - Impact: **This is the dominant error source in the whole measurement.** The speed of sound changes by about 0.606 m/s per °C, so a 1 °C path-average error is a 0.177 % distance error. A realistic 8–10 °C path-average error gives **28–35 mm of error at a 2 m range** — an order of magnitude worse than every other term in the budget. Directly threatens NFR-2.
-- Impact (v8, scaled to the real range now that it is known — 0.7 to ~1.5 m, possibly to ~3 m):
+- Impact (v9, rescaled — the true range is 0.05–0.15 m full to 0.70–1.00 m empty, much shorter than v8 assumed):
 
-  | Source | @1.0 m | @1.5 m | @2.7 m |
+  | Source | @0.15 m (full) | @0.50 m | @1.00 m (empty) |
   |---|---|---|---|
-  | Thermal gradient ±8 °C, one sensor | 14.1 mm | 21.2 mm | 38.2 mm |
-  | Thermal gradient ±3 °C, two sensors | 5.3 mm | 8.0 mm | 14.3 mm |
-  | Ceramic resonator ±0.5 % | 5.0 mm | 7.5 mm | 13.5 mm |
-  | Crystal ±30 ppm | 0.0 mm | 0.0 mm | 0.1 mm |
-  | DS18B20 ±0.5 °C | 0.9 mm | 1.3 mm | 2.4 mm |
-  | Humidity, uncorrected | 3.5 mm | 5.2 mm | 9.4 mm |
+  | Thermal gradient ±8 °C, one sensor | 2.1 mm | 7.1 mm | 14.1 mm |
+  | Thermal gradient ±3 °C, two sensors | 0.8 mm | 2.7 mm | 5.3 mm |
+  | Ceramic resonator ±0.5 % | 0.8 mm | 2.5 mm | 5.0 mm |
+  | Humidity, uncorrected | 0.5 mm | 1.8 mm | 3.5 mm |
+  | Parallax, s = 40 mm, uncorrected (HW-052) | 1.3 mm | 0.4 mm | 0.2 mm |
 
-  **What the customer actually sees is litres, not millimetres**, and that reframing is encouraging — a 21 mm level error is 10.6 L in a 500 L tank (2.1 %), 16.5 L in a 1000 L (1.7 %) and 27.9 L in a 2000 L (1.4 %). Cutting the gradient error with a second sensor and fitting a crystal takes the total to roughly 10 mm, i.e. **under 1 % of tank volume**. That is a good number for this product, and it is achievable — provided **HW-030** is solved first, because a beam locked onto a float valve is not a 1 % error, it is a wrong answer.
+  **The short range is good news.** Every percentage error scales with distance, so at 1.00 m the worst single-sensor term is 14 mm and at 0.15 m it is 2 mm. Note the useful inversion: the temperature and clock errors are worst when the tank is **empty**, while parallax is worst when it is **full** — so no single range is bad for everything, and the two dominant terms never peak together. With two temperature sensors, a crystal and the HW-052 correction, **total error stays under about 7 mm across the whole range**, which is well inside 1 % of tank volume everywhere.
 - Recommended fix, in increasing order of effectiveness:
   1. **Two DS18B20s on the same 1-Wire bus** — one at the transducer, one on a lead reaching down near the low-water line — and average them. This is the highest value-for-money fix on this whole list: one extra part, **zero extra pins** (that is the point of 1-Wire), and it turns the worst error term into one of the smaller ones. Do this.
   2. Shade the sensor head and the tank lid so the gradient is smaller to begin with.
@@ -431,6 +399,38 @@ Production-ready: NO — the ultrasonic beam is wider than the tank across most 
   - A **programming/test header** (ICSP, or SWD if you move to an ARM part) with UART TX/RX brought out, on a footprint that can be probed by a fixture rather than a plugged connector.
   - A **production self-test firmware mode** that exercises every sensor, reports over the UART, and measures its own sleep current draw against the test fixture — run before the enclosure is closed.
 - Notes: Also give each board a **serial number** (a QR/DataMatrix label plus a value in EEPROM). You will need it for the pairing protocol in Stage 6, for field support on a sealed device, and for traceability if a batch goes bad.
+
+---
+
+### HW-030 — Beam containment: sidewall and obstruction clearance
+- Severity: MAJOR *(reduced from BLOCKER — my v8 escalation was wrong, see notes)*
+- Status: OPEN
+- Component / net: RCWL-1670, mechanical mounting
+- Problem: The measurement range is now pinned down: **0.05–0.15 m to the full water line, 0.70–1.00 m to the tank floor.** That is a far shorter range than the v8 analysis assumed, and it changes the conclusion. Recomputing where a beam of width D = 2·d·tan(θ/2) reaches the sidewall, against a range that now ends at 1.00 m:
+
+  | Tank | Diameter | 60° beam reaches wall at | 75° beam reaches wall at |
+  |---|---|---|---|
+  | 500 L | 0.80 m | 0.69 m — clear for 69 % of range | 0.52 m — clear for 52 % |
+  | 1000 L | 1.00 m | 0.87 m — clear for 87 % of range | 0.65 m — clear for 65 % |
+  | 2000 L | 1.30 m | **never within range** | 0.85 m — clear for 85 % |
+
+  So the sidewall is only in the beam over the last part of the range, i.e. only when the tank is nearly empty — and in a 2000 L tank with a 60° beam, never.
+- Impact: Reduced but not zero. Sidewall returns at grazing incidence are weak, so the practical risk is an internal obstruction rather than the wall. The exclusion rule is simple: an object at horizontal offset r only enters the cone once the beam has descended to d = r / tan(θ/2).
+
+  | Object offset from axis | Enters a 60° cone at | Enters a 75° cone at |
+  |---|---|---|
+  | 0.10 m | 0.17 m | 0.13 m |
+  | 0.15 m | 0.26 m | 0.20 m |
+  | 0.20 m | 0.35 m | 0.26 m |
+  | 0.30 m | 0.52 m | 0.39 m |
+
+  **Keeping the sensor axis ≥ 0.20 m clear of the fill pipe, float valve and outlet is sufficient** for anything shallower than 0.35 m, and objects deeper than that are below the water in a reasonably full tank anyway.
+- Recommended fix:
+  1. **Make the clearance an installation specification**, not installer judgement: sensor centred on the tank lid where possible, and a stated minimum 200 mm horizontal clearance from the fill pipe, float valve, outlet and any internal structure. Put the table above in the installation guide so a fitter can reason about an awkward tank.
+  2. **Gate readings on the flow switch.** A stream of water falling from the fill pipe is a target at every depth it passes through, and if it is near the axis it will return echoes across the whole range. You already have the flow switch (FR-3) — use it: do not trust level readings while flow is detected, and take the post-fill reading a minute after flow stops so the surface has settled. This costs nothing and it solves the one obstruction case that clearance cannot.
+  3. **Stilling well — now optional, not required.** Reserve a 110 mm PVC well for 500 L tanks or awkward installations where the 200 mm clearance cannot be met. At 40 kHz the wavelength is 8.6 mm, so 110 mm bore is 12.8 λ and guides cleanly; 75 mm (8.7 λ) also works; 50 mm (5.8 λ) is marginal. Given HW-048's scum problem, do not fit one by default.
+- Notes (v9): **I raised this to BLOCKER in v8 and that was wrong.** I had assumed a range extending to 1.5–2.7 m and claimed the float valve would sit inside the beam and capture the reading. With the real range, the geometry says the opposite: objects near the lid are at *small* depth, where the cone is narrow, so they are automatically excluded unless they are almost on-axis. A float sitting at the water surface returns an echo at the water's own distance, which is harmless. Downgraded to MAJOR, and the fix is a clearance spec rather than a stilling well.
+- Notes: The dominant near-range risks are now **HW-051** (blind zone against a 5 cm minimum distance) and **HW-052** (split-transducer parallax), not beam containment.
 
 ---
 
@@ -600,16 +600,56 @@ Production-ready: NO — the ultrasonic beam is wider than the tank across most 
 - Component / net: System — antenna, enclosure, ultrasonic, grounding
 - Problem: Installations include both plastic and metal tanks. The design currently makes no distinction, but a metal tank changes four separate things and makes each of them worse.
 - Impact:
-  1. **RF.** A metal tank is a large conductor. The Node is mounted outside it (good — the antenna is not enclosed), but an antenna mounted close to or against a metal wall is detuned and its pattern is distorted, easily costing more link margin than the entire difference between +14 and +20 dBm. This directly undercuts the "fix the antenna before raising the PA" point in **HW-047**.
+  1. **RF — this is about proximity, not enclosure.** To be clear, since it came up: the Node and its antenna are outside the tank, and nothing here assumes otherwise. The problem is that at 433 MHz the wavelength is 69 cm and a quarter-wave whip is 17 cm long, so a large metal surface within a fraction of a wavelength detunes the antenna and distorts its pattern — and a Node bracketed to a tank wall puts the whip a few centimetres from a metal sheet the size of a door. That easily costs more link margin than the entire difference between +14 and +20 dBm, which undercuts the "fix the antenna before raising the PA" point in **HW-047**. **Specify a minimum 17 cm (λ/4) standoff from any large metal surface**, or deliberately mount the antenna above the tank rim where the metal is behind it and acts as a ground plane rather than a detuning object.
   2. **Thermal.** Metal in Syrian sun runs far hotter than plastic and radiates into the headspace, producing a **larger vertical temperature gradient** — which is the dominant accuracy error in **HW-023**. A Node enclosure bracketed to a hot metal tank also conducts that heat straight into the electronics, worsening **HW-027**.
-  3. **Acoustic.** A metal wall is a much better acoustic reflector than plastic, so sidewall and corner echoes are **stronger** in a metal tank. Everything in **HW-030** is worse there.
+  3. **Acoustic.** The ultrasonic sensor *is* inside the tank, and a metal wall is a much better acoustic reflector than plastic, so sidewall and corner echoes are **stronger** in a metal tank. That mostly affects the last part of the range where HW-030 shows the beam reaching the wall — worst in a 500 L metal tank, where the wall is in the beam from 0.69 m onward.
   4. **Electrical.** A metal tank may be bonded to building earth, or floating. The Node uses low-side switching, so its load ground is a switched node, and the sensor cable runs from that node into the tank. A fault or a bonded tank creates a path around the MOSFET that the OFF-state analysis in `HYDRO-NODE-REFERENCE.md` §3 does not account for.
 - Recommended fix:
-  - **Mount the antenna clear of the tank** — a defined minimum standoff, ideally on a short mast or bracket that puts it above the tank rim rather than beside the wall. Make this a specified installation dimension, not installer judgement.
+  - **Mount the antenna ≥ 17 cm (λ/4 at 433 MHz) clear of the tank wall**, ideally on a short bracket that puts it above the tank rim rather than beside it. Make this a specified installation dimension, not installer judgement.
   - **Thermally isolate the Node enclosure from the tank** — standoffs or a non-metallic bracket rather than direct contact, plus the sun shield from HW-027.
   - **Use the two-sensor temperature arrangement from HW-023** as standard, not optional. On a metal tank the single-sensor gradient error is worse than the numbers in that issue assume.
   - **Keep the sensor cable galvanically simple**: the ESD/series-resistor protection from **HW-012** is now required, not advisable, and consider whether the in-tank sensor assembly should be fully isolated from the tank structure.
 - Notes: If field data later shows metal tanks behave acceptably, this can be reduced to an installation-guide note. Until then, size the design for the metal-tank case, because it is the worst case on all four axes.
+
+---
+
+### HW-051 — Blind zone versus a 5 cm minimum measured distance
+- Severity: MAJOR
+- Status: OPEN
+- Component / net: RCWL-1670, mechanical mounting
+- Problem: The gap between the transducers and the highest water level is **5–15 cm**. The RCWL-1670 is advertised with a 2 cm minimum, which is plausible for a split TX/RX design — a separate receiver does not have to wait out the transmitter's ringdown the way a single-transducer module does. But that is a marketing figure for a low-cost module, and blind-zone claims of this kind are routinely optimistic. At the 5 cm end you have only 2.5× margin over the claim.
+- Impact: If the real blind zone is 4–6 cm, a full tank returns no echo, a timeout, or a stuck value — **exactly when the reading matters most**, since "is it full" and "has filling finished" are the two questions the product exists to answer. The failure is also silent: a timeout looks like a sensor fault, and a stuck value looks like a working sensor.
+- Recommended fix:
+  1. **Measure the real blind zone before anything else.** Flat target, perpendicular, moved from 2 cm outward in 5 mm steps, 20 readings at each position, at room temperature and at 50 °C. Record the closest distance that returns a stable, correct reading. This is an afternoon on the bench and it is the single most informative test on the ultrasonic.
+  2. **Then set the mounting standoff from the measured number, not the datasheet.** Specify the minimum sensor-to-full-water gap as at least **3× the measured blind zone**. If the measured blind zone is 4 cm, the 5 cm installations are not acceptable and the sensor needs a riser.
+  3. A riser is a trivial mechanical fix — a short spacer or a deeper sensor enclosure lifts the transducers above the lid line. Decide it once, from data.
+- Notes: This is now the top ultrasonic risk, ahead of HW-030. It is cheap to settle and everything downstream — mounting spec, enclosure depth, installation guide — depends on the answer.
+- Notes: Near-field (Fresnel) effects are **not** a concern here. For a transducer of radius a at λ = 8.6 mm, the near field extends a²/λ, which is roughly 7–12 mm for a typical 16–20 mm transducer. Well inside 5 cm. The risk is ringdown and receiver recovery, not near-field.
+
+---
+
+### HW-052 — Split-transducer parallax adds a systematic error at close range
+- Severity: MAJOR
+- Status: OPEN
+- Component / net: RCWL-1670, Hub-side maths
+- Problem: The RCWL-1670 has **separate transmit and receive transducers, physically offset** by roughly 30–50 mm. The sound path is therefore a triangle, not a straight line down and back: the measured round trip is L = 2·√(d² + (s/2)²), where d is the true perpendicular distance and s the centre-to-centre transducer spacing. Any firmware that assumes distance = L/2 over-reads, and the error grows sharply as the target gets closer.
+
+  | True distance | s = 30 mm | s = 40 mm | s = 50 mm |
+  |---|---|---|---|
+  | 50 mm | +2.2 mm (+4.4 %) | **+3.9 mm (+7.7 %)** | +5.9 mm (+11.8 %) |
+  | 100 mm | +1.1 mm | +2.0 mm | +3.1 mm |
+  | 150 mm | +0.7 mm | +1.3 mm | +2.1 mm |
+  | 500 mm | +0.2 mm | +0.4 mm | +0.6 mm |
+  | 1000 mm | +0.1 mm | +0.2 mm | +0.3 mm |
+
+- Impact: A **systematic over-reading that is largest exactly when the tank is full** — the region this product cares about most. At the 5 cm minimum with 40 mm spacing it is nearly 4 mm, comparable to every other error term combined at that range, and unlike the others it is a fixed bias rather than noise, so averaging will not remove it. It also biases the "tank full" threshold in the direction of under-reporting fullness.
+- Recommended fix: Correct it on the Hub, which is where all the maths lives (Section 2 of the project brief). Given the measured round-trip path length L and the transducer spacing s:
+
+  **d = √( (L/2)² − (s/2)² )**
+
+  Measure s once with callipers on a production module — centre to centre of the two transducer barrels — and treat it as a build constant. The correction is exact, costs one square root on the Hub, and disappears into rounding beyond about 300 mm.
+- Notes: This is another reason the Node should transmit **raw echo microseconds** rather than a converted distance (see `HYDRO-NODE-REFERENCE.md` §5). With the raw time of flight on the Hub, the parallax correction, the speed-of-sound correction and the tank geometry are all applied in one place and can be revised over Wi-Fi without touching a sealed rooftop device.
+- Notes: Verify the model empirically during the HW-051 blind-zone sweep — the same measurement run gives you the data to confirm the formula and to pin down s.
 
 ---
 
@@ -752,6 +792,7 @@ Production-ready: NO — the ultrasonic beam is wider than the tank across most 
 
 | Version | Date | Change |
 |---|---|---|
+| v9 | 2026-08-19 | Range pinned down: 0.05–0.15 m to full water, 0.70–1.00 m to tank floor. **HW-030 BLOCKER → MAJOR — the v8 escalation was wrong.** With the real range the geometry inverts: objects near the lid sit at small depth where the cone is narrow, so they are excluded unless almost on-axis; a float at the water surface returns an echo at the water's own distance. Fix is a 200 mm clearance spec plus flow-switch gating, not a stilling well. Added HW-051 (blind zone against a 5 cm minimum — now the top ultrasonic risk) and HW-052 (split-transducer parallax, +7.7 % at 5 cm, exactly correctable on the Hub). HW-050 sharpened — the metal-tank RF issue is antenna *proximity*, not enclosure; λ/4 = 17 cm standoff specified. HW-023 rescaled: under ~7 mm total across the whole range once corrected. Blockers 3 → 2. |
 | v8 | 2026-08-19 | Tank sizes and mounting height received (500/1000/2000 L, plastic and metal, sensor 0.7–1.5 m above water). **HW-030 raised MAJOR → BLOCKER** with the beam geometry computed: a 60° cone reaches the sidewall at 0.87 m in a 1000 L tank against a range starting at 0.7 m, so internal obstructions — the float valve above all — sit inside the beam and the module will report a stable, plausible, permanently wrong "full". Stilling-well sizing given against the 8.6 mm wavelength; hydrostatic pressure sensing recorded as the robust alternative. Added HW-050 (metal tanks are worse on RF, thermal, acoustic and electrical grounds; both types must be supported). HW-023 error budget rescaled to the real range and restated in litres — under 1 % of tank volume is achievable once HW-030 is solved. HW-048 cross-linked to the stilling-well conflict. Blockers 2 → 3. |
 | v7 | 2026-08-19 | **HW-006 → RESOLVED** — deployment is Syria with no enforced RF power limit, so +18 dBm is available and HW-003's mandatory TX power cut is amended to optional. HW-045 material question answered: potable-rated materials specified regardless, status NEEDS INFO → OPEN. HW-027 strengthened with Syrian climate data — 70–85 °C internal is at or above PETG's glass transition, so the material change and sun shield move from advisable to necessary. Added HW-047 (433 MHz channel plan, collisions, antenna-before-PA), HW-048 (transducer and surface fouling in an uncleaned tank) and HW-049 (Hub power outages waste ~0.50 Ah and lose data). Blockers 3 → 2. |
 | v6 | 2026-08-19 | HW-003 recommended fix revised for real part availability (LS26500 not sourceable): keep two LS14500 in parallel with per-cell isolation — ideal-diode controller preferred, low-Vf Schottky acceptable — and cut TX power. Answered the diode leakage concern (unfounded — diodes are always forward-biased) and the drop concern (real, quantified, ~2.73 V worst case). Rejected the one-cell-plus-bulk-capacitor option with arithmetic (needs 36,000 µF) and the one-cell-plus-supercap option on energy margin (1.21×). HW-009 updated with the same arithmetic. Rechargeable and solar options assessed in reference §10.5. No change to issue counts. |
