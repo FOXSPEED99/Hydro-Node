@@ -1,8 +1,8 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v1   |   Last updated: 2026-08-19   |   Status: Stage 0 hardware review complete — awaiting your responses
+Version: v2   |   Last updated: 2026-08-19   |   Status: Stage 0 review — logic-family choice for U1 under discussion
 
 ## STATUS SUMMARY
-Total issues: 40   |   Open: 40   |   Resolved: 0   |   Won't fix: 0
+Total issues: 41   |   Open: 41   |   Resolved: 0   |   Won't fix: 0
 Blockers remaining: 6
 Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of battery, not 2 years), the ultrasonic connector pin order does not match the module it plugs into, and the two Li-SOCl₂ cells are hard-paralleled without blocking diodes.
 
@@ -158,6 +158,7 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
   - Add **R_series ≈ 10 kΩ** between S1 and the C1/R3 node. This limits contact current and gives a defined attack time constant.
   - Once you add that series resistor, **both** edges at CLOCK1 become slow (attack ≈ 1 ms, decay ≈ 1 ms). Feed the node through a **Schmitt-trigger buffer (74LVC1G17, non-inverting, Icc typically well under 1 µA)** into CLOCK1 rather than driving the flip-flop directly. This both cleans the bounce and guarantees a fast edge into the clock input.
   - Use a **non-inverting** buffer so the toggle still happens on magnet *approach*, not on removal.
+- Notes (v2): The Schmitt buffer requirement is now coupled to the U1 part choice — see **HW-041**. If U1 becomes an **SN74HCS74**, every input is already Schmitt-triggered with no transition-rate requirement, and the separate buffer is deleted (the series resistor and the RC are still required). If U1 stays **CD4013BE** or becomes a plain **74HC74**, the buffer is mandatory — and more so for the 74HC74, which is the least tolerant of slow edges of the three.
 - Notes: **Verification of the latch as drawn, per your Section 6 item 6.** I traced it from the extracted netlist: U1 is wired as a T-flip-flop (D1 ← Q1̄, pin 5 ← pin 2), CLOCK1 ← reed node, Q1 (pin 1) → R2 1 kΩ → Q1 gate, R1 1 MΩ gate pulldown to the raw battery return. SET1, SET2, RESET2, CLOCK2, D2 are all correctly tied to VSS; the unused half's outputs are correctly left open. C2 (100 nF from VBAT) with R4 (100 kΩ to VSS) is a correct **active-high power-on-reset** giving ~10 ms — so the device powers up OFF when a cell is first fitted. **Toggle logic is correct and the OFF state is genuinely clean:** with Q1 off, every resistive path (R1, R3, R4) sits at 0 V across it, C2 and C4 are ceramic, and the only OFF-state current is the MOSFET's leakage plus the CD4013's quiescent (< 1 µA at 25 °C). I have no objection to the concept — only to the debounce, the contact protection, and the placement (HW-015).
 
 ### HW-015 — Reed switch is mounted in the centre of the PCB
@@ -411,6 +412,7 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 - Impact: An intermittent contact in the power-latch IC means the device randomly turns off, or fails to turn on, in the field.
 - Recommended fix: Use the **SOIC-14 version soldered directly** (CD4013BM or equivalent). If U1 survives the architecture decision under HW-021 at all, do not socket it. Confirm the quiescent current and the operating temperature range against your chosen vendor's datasheet — the family covers −55 °C to +125 °C and 3–18 V, which is comfortable here, but I want the specific part's Iq over temperature in the power model rather than an assumption.
 - Notes: I also want to check one specification I could not retrieve during this review: most CD4013B datasheets state a **maximum clock input rise/fall time** (I believe around 15 µs at V_DD = 5 V, but treat that as unverified until you or I read the vendor datasheet). As drawn today the *active* rising edge at CLOCK1 is fast, so the spec is probably not violated — but the moment you add the series resistor from HW-014 it will be, which is exactly why HW-014 also calls for a Schmitt-trigger buffer. **Please confirm the number from your part's datasheet.**
+- Notes (v2): Partly superseded by **HW-041**. The package question here (SOIC, not socketed DIP) stands regardless of which logic family wins.
 
 ### HW-038 — Connector functions are not on the silkscreen; DS18B20 wire order is undocumented
 - Severity: MINOR
@@ -441,6 +443,23 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 
 ---
 
+### HW-041 — Logic family for the power-latch flip-flop: CD4013BE vs 74HC74 vs SN74HCS74
+- Severity: MINOR
+- Status: IN DISCUSSION
+- Component / net: U1
+- Problem: The CD4013BE is being run at 3.0–3.6 V. That is inside its recommended 3–18 V supply range, but **outside every characterisation table in the datasheet** — CD4013B DC and AC parameters are specified at V_DD = 5 V, 10 V and 15 V only. So no timing, drive or threshold parameter is guaranteed at the voltage this product actually runs at. This is the same class of defect as HW-017 (the IRLZ44N driven at an uncharacterised V_GS): it will work on the bench, and nothing in the datasheet says it must.
+- Impact: No guaranteed operating point for the part that decides whether the device is on or off. Low probability of failure, but it is not a defensible production position, and it is cheap to fix.
+- Recommended fix, in order of preference:
+  1. **SN74HCS74 (recommended).** A 74HC74 with **Schmitt-trigger action on every input** and, per TI, **no input signal transition-rate requirement**. Specified 2–5.5 V, so 3.0–3.6 V is squarely inside the characterised range. This single substitution fixes the uncharacterised-operating-point problem *and* removes the separate Schmitt buffer that HW-014 would otherwise require. Only drawback: TSSOP/SOIC only, no DIP — which is fine, because HW-026 and HW-037 want SMD anyway, but it means it cannot go on the breadboard today.
+  2. **74HC74.** Characterised at 2.0 V and 4.5 V, which brackets 3.6 V, so it fixes the specification gap. But it is **less tolerant of slow input edges than the CD4013BE**, not more — HC logic has higher gain and faster internal stages, so an RC-driven reed edge is more likely to produce multiple clock transitions. Acceptable **only** with the Schmitt buffer from HW-014 fitted.
+  3. **Keep the CD4013BE.** Works, has the best quiescent-current specification of the three on paper, and is the most tolerant of slow edges. The specification gap at 3.6 V remains and would have to be accepted as a documented risk.
+  Also required whichever part wins: a **100 nF decoupling capacitor directly across pins 14 and 7** (this is still missing — HW-013).
+- Notes: **Do not fit a 74HCT74.** It is one letter different, physically identical, and will not work here: HCT has TTL input thresholds and needs V_CC = 4.5–5.5 V. Check the marking on the bench part before wiring anything.
+- Notes: This change closes no blocker and does not affect the battery budget materially. It is a production-quality item. It is also moot if the architecture decision under HW-021 goes the "delete the flip-flop entirely" way — **settle HW-021 first**, because it may delete U1 rather than replace it.
+- Notes: Pin-for-pin migration detail (CD4013BE → 74HC74/HCS74) is in `HYDRO-NODE-REFERENCE.md` section 7. The two parts are both 14-pin dual D flip-flops but the pinouts are **not** compatible, and the set/reset polarity is **inverted** (CD4013 SET/RESET are active HIGH; 74HC74 PRE/CLR are active LOW). It is not a socket swap.
+
+---
+
 ## RESOLVED / WON'T FIX
 
 *(Nothing resolved yet — this is the initial review.)*
@@ -451,4 +470,5 @@ Production-ready: NO — as built the Node draws ~2 mA in sleep (≈88 days of b
 
 | Version | Date | Change |
 |---|---|---|
+| v2 | 2026-08-19 | Added HW-041 (logic family for U1: CD4013BE vs 74HC74 vs SN74HCS74; SN74HCS74 recommended). Updated HW-014 notes — the Schmitt-buffer requirement is now conditional on the HW-041 outcome. Updated HW-037 notes. |
 | v1 | 2026-08-19 | Initial Stage 0 hardware review — 40 issues found (6 BLOCKER, 26 MAJOR, 8 MINOR). Netlist extracted directly from `Hydro-Node.SchDoc`; PCB stackup and routing extracted from `Hydro-Node.PcbDoc`. Reed latch topology traced and verified logically correct (recorded under HW-014). |

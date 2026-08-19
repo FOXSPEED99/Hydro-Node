@@ -169,3 +169,97 @@ Where a number in the tracker came from a published specification rather than fr
 - The **IRLZ44N's R_DS(on) and I_DSS at V_GS = 3.6 V and V_DS = 3.6 V** (HW-017). These operating points are not in the datasheet at all, which is itself the finding.
 - The **CD4013BE's quiescent current at 3.6 V over the full temperature range** (HW-037).
 - **SAFT's specific guidance on paralleling LS14500 cells and on depassivation** (HW-003, HW-032). Do not act on my summary alone for the safety-related item — get it from SAFT.
+
+---
+
+## 7. U1 migration detail — CD4013BE → 74HC74 / SN74HCS74 (HW-041)
+
+Both parts are 14-pin dual D flip-flops. **The pinouts are not compatible and the asynchronous input polarity is inverted.** This is not a socket swap.
+
+### 7.1 Pinout comparison
+
+| Pin | CD4013BE | 74HC74 / SN74HCS74 |
+|---|---|---|
+| 1 | Q1 | 1CLR (active **LOW**) |
+| 2 | Q1 (inverted) | 1D |
+| 3 | CLOCK1 | 1CLK |
+| 4 | RESET1 (active **HIGH**) | 1PRE (active **LOW**) |
+| 5 | D1 | 1Q |
+| 6 | SET1 (active **HIGH**) | 1Q (inverted) |
+| 7 | VSS | GND |
+| 8 | SET2 (active HIGH) | 2Q (inverted) |
+| 9 | D2 | 2Q |
+| 10 | RESET2 (active HIGH) | 2PRE (active LOW) |
+| 11 | CLOCK2 | 2CLK |
+| 12 | Q2 (inverted) | 2D |
+| 13 | Q2 | 2CLR (active LOW) |
+| 14 | VDD | VCC |
+
+Only pins **3, 7, 11 and 14** keep both their number and their connection. Everything else moves.
+
+### 7.2 Net-by-net change list
+
+| Function | CD4013 pin | Current connection | 74HC74 pin | New connection | Changed? |
+|---|---|---|---|---|---|
+| Supply + | 14 | VBAT | 14 | VBAT | no |
+| Supply - | 7 | GND_RAW | 7 | GND_RAW | no |
+| Clock in | 3 | reed node (NET04) | 3 | reed node (NET04) | no |
+| Unused clock | 11 | GND_RAW | 11 | GND_RAW | no |
+| Data in | 5 | from pin 2 | **2** | from pin **6** | **yes** |
+| Inverted output | 2 | to pin 5 | **6** | to pin **2** | **yes** |
+| Latch output | 1 | R2 (1k) to MOSFET gate | **5** | R2 (1k) to MOSFET gate | **yes** |
+| Reset / clear | 4 | POR network, active HIGH | **1** | POR network, **active LOW** | **yes — see 7.3** |
+| Set / preset | 6 | GND_RAW | **4** | **VBAT** | **yes — polarity flip** |
+| Unused set/preset | 8 | GND_RAW | **10** | **VBAT** | **yes — polarity flip** |
+| Unused reset/clear | 10 | GND_RAW | **13** | **VBAT** | **yes — polarity flip** |
+| Unused data | 9 | GND_RAW | **12** | GND_RAW | **yes (pin moves)** |
+| Unused outputs | 12, 13 | open | 8, 9 | open | pin moves |
+
+The three polarity flips are the ones that will silently break the circuit if missed. On the CD4013 the unused SET/RESET pins are tied **low** to disable them; on the 74HC74 the equivalent PRE/CLR pins must be tied **high**. Tie them to VCC directly — if 1PRE and 1CLR are ever low at the same time the output state is invalid.
+
+**Do not leave any unused 74HC74 input floating.** A floating HC input sits near its threshold and draws crossbar current continuously — tens of microamps, which is a direct hit on the NFR-1 budget. 2D and 2CLK must both be tied to a rail. (The CD4013 version already does this correctly.)
+
+### 7.3 Power-on reset network inversion
+
+The CD4013's RESET is active high; the 74HC74's CLR is active low. The POR network therefore has to invert. **Same two components, same values — swap their positions:**
+
+| | Now (CD4013, active HIGH) | New (74HC74, active LOW) |
+|---|---|---|
+| C2 (100 nF) | VBAT to pin 4 | pin 1 to GND_RAW |
+| R4 (100 kΩ) | pin 4 to GND_RAW | VBAT to pin 1 |
+| At power-up | node jumps to VBAT, decays to 0 | node starts at 0, rises to VBAT |
+| Time constant | 10 ms | 10 ms |
+| Steady state | 0 V, no current | VBAT, no current |
+| Result | RESET asserted then released | CLR asserted then released |
+
+Both give the same behaviour: the device powers up **OFF** when a cell is first fitted.
+
+One caveat for the 74HC74 (not the HCS74): the 10 ms RC edge on CLR is extremely slow for a non-Schmitt asynchronous input. It is a once-per-battery-change event with no clock present, so the practical risk is low — but it is another reason to prefer the SN74HCS74, whose CLR input is Schmitt-triggered.
+
+### 7.4 Comparison summary
+
+| Criterion | CD4013BE | 74HC74 | SN74HCS74 |
+|---|---|---|---|
+| Supply range | 3–18 V | 2–6 V | 2–5.5 V |
+| Characterised at 3.0–3.6 V? | **No** (tables are 5/10/15 V only) | Yes (2.0 V and 4.5 V bracket it) | Yes |
+| Schmitt-trigger inputs | No | No | **Yes, all inputs** |
+| Slow input edge tolerance | Best of the three | **Worst of the three** | No transition-rate requirement at all |
+| Separate Schmitt buffer needed (HW-014) | Yes | Yes, mandatory | **No — deleted** |
+| Quiescent current spec | Best on paper | Slightly worse | Similar to HC |
+| Output drive | ~0.5 mA | ±4 mA | ±4 mA |
+| DIP available for bench work | Yes | Yes | **No** (TSSOP/SOIC only) |
+
+**Recommendation: SN74HCS74 for production, because it fixes the characterisation gap and deletes a part.** Verify quiescent current at 3.6 V from the vendor datasheet before committing — that number is not yet confirmed here.
+
+**Warning: 74HCT74 will not work.** TTL input thresholds, V_CC = 4.5–5.5 V. One letter apart from the correct part and physically identical. Check the marking.
+
+### 7.5 Bench test to settle it (both parts are on hand)
+
+Run all four steps on each candidate at **3.6 V** from a current-limited bench supply, then repeat at **3.0 V** to simulate end of battery life.
+
+1. **Quiescent current.** IC alone, all unused inputs tied off, no load on Q. Measure I_CC at 25 °C, then soak to ~60 °C with a heat gun and measure again. Expect sub-microamp typical for both; record the actual numbers for the power model.
+2. **Toggle correctness.** Wire the full latch. 200 magnet approaches, log Q. Count how many approaches produce anything other than exactly one state change.
+3. **The decisive test — slow edge.** Disconnect the reed. Drive CLK from a function generator with a **1 ms linear ramp, 0 → 3.6 V**, 200 cycles. Count output transitions with a scope or a counter. One transition per ramp is a pass; anything more is the edge-rate problem, and this is where the CD4013BE and the 74HC74 should visibly differ.
+4. **Same test with a Schmitt buffer in front.** Both parts should now be perfect. If they are, that confirms the buffer is the real fix and the flip-flop family is a secondary choice — which is what HW-041 assumes.
+
+Record the results against HW-041 and HW-014, and I will close them out.
