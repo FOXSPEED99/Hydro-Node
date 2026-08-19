@@ -451,3 +451,108 @@ Tap = ON via PRE, hold ~3 s = OFF via an RC timer into CLR. Keeps both direction
 3. **Reset immunity.** Pull the MCU's RESET line low while the device is on. The latch must hold and the device must come back up.
 4. **Standby current.** Measure with the device off, and again with a magnet held on the reed. Expect sub-µA and ~3.6 µA respectively.
 5. **Indicator legibility (HW-016, HW-044).** Confirm the startup blink is clearly visible through the production enclosure wall, in daylight, at **3.0 V** — not just at 3.6 V.
+
+---
+
+## 10. Battery configuration analysis (HW-003, HW-009, HW-042)
+
+Constraint set as of v6: the only primary cells available are **LS14500 (2.6 Ah)** and **LS14250 (1.2 Ah)**. Rechargeables of any form factor are available. LS26500 and larger are not sourceable.
+
+### 10.1 The two problems are separate
+
+They get conflated, and the confusion is why "add a big capacitor" keeps looking attractive:
+
+| Problem | What it is | What fixes it |
+|---|---|---|
+| **Energy** | ~1.8 Ah must come out of the pack over 2 years | More Ah — a second cell, or less consumption |
+| **Peak current** | The Ra-02 wants 120 mA; an LS14500 is rated 50 mA continuous | A second cell, a supercapacitor, or lower TX power |
+
+Paralleling two cells happens to solve **both**, which is why the original instinct was sound. Only the *direct* connection is unsafe — the parallel topology itself is fine once the cells are isolated from each other.
+
+### 10.2 Energy budget vs configuration
+
+Non-TX portion of each wake is 4.05 mA·s (MCU wake 0.26, DS18B20 9-bit 0.47, five ultrasonic cycles 2.50, LoRa config/ramp 0.50, housekeeping 0.32). TX adds 60 ms at the PA current. 525,600 wakes over 2 years at a 120 s interval. Sleep assumed 20 µA = 0.35 Ah. Usable capacity derated 15 % from nameplate for self-discharge, cut-off and pulse-load losses.
+
+| TX power | PA current | Per wake | 2-yr active | 2-yr total |
+|---|---|---|---|---|
+| +20 dBm | 120 mA | 11.25 mA·s | 1.64 Ah | **1.99 Ah** |
+| +18 dBm | ~100 mA | 10.05 mA·s | 1.47 Ah | **1.82 Ah** |
+| +14 dBm | ~45 mA | 6.75 mA·s | 0.99 Ah | **1.34 Ah** |
+| +10 dBm | ~30 mA | 5.85 mA·s | 0.85 Ah | **1.20 Ah** |
+
+| Configuration | Usable | Margin @ +18 dBm | Margin @ +14 dBm |
+|---|---|---|---|
+| 1 × LS14500 | 2.2 Ah | **1.21×** | 1.65× |
+| 2 × LS14500 | 4.4 Ah | **2.42×** | **3.29×** |
+| 1 × LS14250 | 1.0 Ah | 0.55× — fails | 0.75× — fails |
+
+A single LS14500 at 1.21× is not a production margin for a 2-year claim. **Two cells, or one cell plus a TX power cut and an accepted 1.65×.**
+
+PA current figures other than +20 dBm are interpolated from the SX1276/78 family datasheet anchors (120 mA at +20 dBm on PA_BOOST, ~87 mA at +17 dBm, ~29 mA at +13 dBm on RFO). **Measure the actual Ra-02 current at your chosen power setting before locking the budget.**
+
+### 10.3 Why a bulk capacitor cannot carry the burst
+
+One TX burst at SF7 moves **Q = I·t = 0.120 A × 0.060 s = 7.2 mC**.
+
+| Capacitor | Resulting sag ΔV = Q/C |
+|---|---|
+| 470 µF | 15.3 V |
+| 1000 µF | 7.2 V |
+| 2200 µF | **3.3 V** — fully collapsed |
+| Required for ΔV ≤ 0.2 V | **36,000 µF** |
+| 0.1 F supercapacitor | 0.072 V |
+
+Even the softer framing — "let the cell supply its rated 50 mA and the cap covers the excess 70 mA" — needs 4.2 mC, which is still a **1.9 V** sag into 2200 µF. A bulk capacitor of any size that fits this enclosure is off by more than an order of magnitude. This is also why the fitted C3 does not do what it appears to (HW-009); its only real function is smoothing the first few milliseconds of the current edge.
+
+**A supercapacitor does work**, in this topology:
+
+```
+   cell ──/\/\/\── ● ──┬── supercap 0.1 F, ESR <= 1 ohm
+          R 100 Ω     │
+                      └── load (Ra-02 etc.)
+```
+
+- During TX the load draws from the supercap directly — R is not in that path. Sag ≈ 72 mV.
+- R limits the cell to 3.6 V / 100 Ω = **36 mA** worst case, inside the 50 mA rating even with an empty supercap at first power-up.
+- Recharge after a burst: ~0.7 mA through R, restoring 7.2 mC in about 10 s — comfortably inside a 120 s cycle.
+- Quiescent current through R costs 2 mV at 20 µA. Negligible.
+
+Costs: supercap leakage is typically 1–10 µA continuous and must be budgeted; ESR above ~1 Ω defeats the purpose (10 Ω would drop 0.7 V at 70 mA); and **most small supercaps are rated 2.7 V, below the 3.6 V rail** — you need a 3.8 V or 5.5 V part, and the 5.5 V ones are two cells in series, halving capacitance and doubling ESR.
+
+This solves peak current but **not energy** — see §10.2. It does not rescue a single-cell design.
+
+### 10.4 Worst-case rail with per-cell isolation
+
+At +18 dBm, 100 mA total, each cell and each diode carries ~50 mA. End-of-life cell at 3.2 V with elevated internal impedance from passivation (~3 Ω per cell → 0.15 V sag).
+
+| Isolation method | Drop at 50 mA | Rail at end of life | Verdict |
+|---|---|---|---|
+| Plain Schottky (BAT54 class) | ~0.32 V | **2.73 V** | Works, but only 0.33 V over the MCU floor |
+| Low-Vf Schottky (PMEG class) | ~0.22 V | 2.83 V | Better |
+| Ideal-diode controller | 0.01–0.03 V | **3.03 V** | Preferred |
+
+Load minimums to clear: ATmega328P at 8 MHz **2.4 V**; Ra-02 **1.8 V**; 74HC74 **2.0 V** (and it sits behind its own hold-up diode from HW-042, so it sees another ~0.15 V less).
+
+The ATmega is the binding constraint. Cutting TX power to +14 dBm halves the diode current and moves every row in this table up by roughly 0.1 V, on top of the energy saving.
+
+### 10.5 Rechargeable options — assessed, not recommended without a charging source
+
+| Chemistry | Voltage | Blocker for this design |
+|---|---|---|
+| Li-ion / LiPo | 3.0–4.2 V | **4.2 V exceeds the Ra-02's 3.7 V maximum** — needs a regulator. Self-discharge ~2–3 %/month loses over half the pack across 2 years with nothing charging it. |
+| LiFePO₄ | 2.5–3.65 V | Voltage range is nearly a drop-in for the 3.6 V rail, and it handles amps without complaint. But self-discharge ~3 %/month still loses most of the pack over 2 years unpowered. |
+
+**The disqualifier for every rechargeable here is self-discharge over an unattended 2-year life**, not the chemistry. Secondary problem: a lithium-ion pack sealed in a rooftop enclosure that reaches 70–80 °C (HW-027) is a worse safety proposition than the one HW-003 is trying to avoid. LiFePO₄ tolerates heat far better but is still typically rated to ~60 °C.
+
+**Solar + LiFePO₄ is a genuinely credible alternative** and deserves a real look, because this device sits in direct sunlight by definition. A ~1 W panel covers a 100 µA average many times over, and it would delete HW-003 entirely along with HW-032 (passivation) and most of HW-042 (droop) — LiFePO₄ has milliohm-class impedance and does not sag under 120 mA.
+
+Its own scope, if you want it costed: panel and mounting, a charge controller with µA-class quiescent, a **sub-zero charge lockout** (LiFePO₄ must not be charged below 0 °C), another enclosure penetration, and a panel-soiling/shading maintenance story.
+
+### 10.6 Recommendation
+
+**Two LS14500 in parallel with per-cell isolation, plus a TX power cut.**
+
+1. Ideal-diode controller per cell (low-Vf Schottky as the fallback), plus a PTC or fuse in the pack lead.
+2. Drop TX power from +18 dBm. It is the single largest lever available: it nearly halves the dominant energy term, halves the peak current so the cells sit inside their rating, reduces the HW-042 droop, and is very likely forced by **HW-006** anyway.
+
+That gives a **3.3× margin** on the 2-year target at +14 dBm, which is the kind of headroom a production claim needs.
