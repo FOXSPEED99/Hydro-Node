@@ -1,8 +1,8 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v9   |   Last updated: 2026-08-19   |   Status: Stage 0 review — measurement range pinned down; beam containment de-escalated
+Version: v10   |   Last updated: 2026-08-19   |   Status: Stage 0 review — 2 blockers, 2 issues closed this round
 
 ## STATUS SUMMARY
-Total issues: 52   |   Open: 50   |   Resolved: 2   |   Won't fix: 0
+Total issues: 52   |   Open: 48   |   Resolved: 3   |   Won't fix: 1
 Blockers remaining: 2
 Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, and the PCB has no ground plane.
 
@@ -97,17 +97,6 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
-### HW-008 — Ra-02 fed directly from a fresh Li-SOCl₂ cell, at the top of its rated supply range
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: J1 pin 3 (3V3), VBAT
-- Problem: The Ra-02's specified operating range is **1.8–3.7 V**. A fresh, unloaded LS14500 sits at ~3.6–3.67 V. The design connects the cell straight to the module with no regulation, so the module runs at the very top of its range with essentially no margin, and any transient above 3.7 V is out of spec.
-- Impact: No design margin on the most expensive and most failure-sensitive part on the board. Also, an unregulated rail that sags under a 120 mA TX pulse means the PA sees a moving supply — output power and frequency stability both move with it.
-- Recommended fix: Either (a) add a low-Iq LDO (target quiescent < 2 µA, e.g. a 3.0–3.3 V part) feeding the Ra-02 and the MCU, accepting ~0.3 V of dropout headroom loss; or (b) keep the direct connection and formally accept the risk, but then you must measure the rail at the module during TX across the full temperature range and confirm it never exceeds 3.7 V. Option (a) also stabilises the ADC reference and the ultrasonic drive amplitude, which helps NFR-2.
-- Notes: The SX1278 silicon's absolute maximum is 3.9 V, so this is a margin issue rather than an immediate destruction risk — but "operating at the datasheet limit" is exactly the kind of thing that passes on a bench and fails in a batch.
-
----
-
 ### HW-009 — C3 (2200 µF aluminium electrolytic) is the wrong part in the wrong place
 - Severity: MAJOR
 - Status: OPEN
@@ -125,36 +114,22 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
-### HW-010 — No reverse-polarity protection on the battery input
+### HW-012 — No ESD or surge protection on the three external sensor cables
 - Severity: MAJOR
 - Status: OPEN
-- Component / net: Battery connector, VBAT
-- Problem: The battery lands on a 2-pin JST-XH and goes straight to the CD4013's VDD, the MCU's VCC, the Ra-02's 3V3 and the ultrasonic module's supply. A reversed pack destroys all of them at once, and reverse-biases C3.
-- Impact: On a production line with hand-crimped battery leads, reversed packs happen. One reversal is a scrapped board, not a recoverable fault.
-- Recommended fix: Add a **series P-channel MOSFET ideal-diode** in the VBAT line (gate to ground through a resistor, source to battery, drain to the rail). Costs ~20 mΩ and essentially zero quiescent current, and it does not eat the 0.2–0.3 V that a Schottky would — which matters when the cell plateau is only 3.6 V. Note that the per-cell blocking diodes from HW-003 give partial protection but do not cover a reversed connector.
-- Notes: Combine with HW-011 — a keyed, non-interchangeable battery connector plus the P-FET makes this failure mode essentially impossible.
-
----
-
-### HW-011 — Battery and flow-switch connectors are both 2-pin JST-XH and are interchangeable
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: Battery connector, J4 (FLOW) — BOM lists 2× B2B-XH-A
-- Problem: Two mechanically identical 2-pin connectors sit on the same board. Plugging the battery pack into J4 puts 3.6 V directly onto D5 and onto the switched-ground net. Plugging the flow switch into the battery connector shorts VBAT to the raw battery return whenever water flows.
-- Impact: Board or cell damage from a plausible assembly or field-service mistake. Fails the "repeatable assembly" half of NFR-6.
-- Recommended fix: Make them physically impossible to swap. Use a **different connector family or a different key for the battery** (e.g. JST-PH 2-pin or a polarised 2-pin locking connector for the battery, keep XH for the sensors), and add function names to the silkscreen (see HW-038).
-- Notes: Cheapest possible fix; do it in the same respin.
-
----
-
-### HW-012 — No ESD or surge protection on any of the three external sensor cables
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: J3 (Temp), J4 (Flow), J5 (Ultrasonic)
-- Problem: Three cables leave a sealed enclosure and run across a rooftop to a tank and a fill pipe. Nothing on the board protects the pins they land on: D3, D4, D5, D6, D7 all go straight to the MCU.
-- Impact: Direct ESD hits during installation, and induced surges from nearby lightning, will kill MCU pins. The 1-Wire line (D4) is the classic victim — it is a long, high-impedance, pulled-up line. A dead pin on a sealed rooftop device is a truck roll.
-- Recommended fix: On each externally-exposed line: a **low-capacitance TVS/ESD array to ground** (choose < 5 pF for the echo and 1-Wire lines so you do not slow the edges), plus a **100 Ω series resistor** at the MCU pin. Ensure the TVS ground is the pour, close to the connector. Also fit a TVS across the supply feeding the ultrasonic module.
-- Notes: The 100 Ω series resistors are nearly free and also limit fault current if a cable shorts to the rail.
+- Component / net: J3 (Temp), J4 (Flow), J5 (Ultrasonic) — U2 pins D3, D4, D5, D6, D7
+- Problem: Three cables leave a sealed enclosure and run across a rooftop to a tank and a fill pipe. Nothing on the board protects the pins they land on.
+- Your question, answered: *"Protection from what? The device runs on 3.6 V, there is no 220 V mains here."* This is a common and reasonable assumption, but **ESD and induced surge have nothing to do with the circuit's own supply voltage.** The energy comes from outside:
+  1. **The installer is the source.** A person walking on a roof in dry, dusty air routinely carries 10–25 kV of static. The standard human-body model is 2 kV through 1.5 kΩ, which is a **~1.3 A peak for about 150 ns**. When that person touches a connector pin or a bare cable end, all of it goes into the MCU pin. Your 3.6 V rail neither causes nor limits it. If anything a 3.6 V CMOS part is *more* fragile than a 5 V one — thinner gate oxide, less headroom.
+  2. **Syria's climate makes this worse, not better.** Dry, dusty air is precisely the condition that generates the highest static potentials. Low humidity means charge does not bleed away. This is a harsher ESD environment than a humid coastal one, not a gentler one.
+  3. **Induced surge from nearby lightning.** A cable running across a roof and down into a tank forms a loop. A strike a few hundred metres away couples into that loop magnetically — no direct hit required — and induces tens to hundreds of volts. Again, independent of your supply voltage.
+  4. **The cable is the collector, not the supply.** The exposure is created by having several metres of wire outside the box, which is a design property you cannot remove.
+- Impact: A dead GPIO on a sealed device on a roof. Not repairable in the field, so every occurrence is a site visit and a replacement unit. The **DS18B20 1-Wire line (D4) is the most vulnerable** — long, high impedance, pulled up, and connected straight to a pin with nothing in between.
+- Recommended fix, tiered so you can take the cheap 80 % now:
+  1. **Nearly free — do this regardless.** A **100 Ω series resistor** at the MCU end of every externally-exposed signal: D4 (1-Wire), D5 (flow), D6 (Trig), D7 (Echo). Six cents of resistors. It limits current into the ATmega's internal clamp diodes, which are good for roughly 1 mA of continuous injection, and it also limits fault current if a cable shorts to a rail. At 100 Ω the effect on 1-Wire timing and on the echo edge is negligible.
+  2. **Full protection.** A **low-capacitance ESD/TVS array to ground** on each of those lines — choose < 5 pF so the echo edge and the 1-Wire timing are not slowed — plus one across the supply feeding the ultrasonic module. Place them at the connectors with a short path to the ground pour, so the transient never travels across the board.
+- Notes: This is one of the cheapest items on the whole list relative to what it prevents, and unlike most of the others it cannot be retrofitted — the pads have to exist in the respin. Take at least tier 1.
+- Notes: Also relevant to **HW-050** — a metal tank is a large conductor that the sensor cable enters, which gives an induced transient somewhere convenient to couple into.
 
 ---
 
@@ -653,6 +628,20 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
+### HW-010 — Reverse polarity: the risk is a mis-crimped pack, not a reversed connector
+- Severity: MINOR *(reduced from MAJOR in v10)*
+- Status: OPEN
+- Component / net: Battery connector, VBAT
+- Problem: My original wording said the battery could be connected backwards. **You are right that it cannot be mis-mated** — the JST-XH housing is keyed and only enters one way, so an assembled pack cannot be plugged in reversed. That half of the issue is withdrawn. What survives is a different failure: the two wires being **crimped into the wrong positions in the housing** when the pack is assembled. The connector then mates perfectly, looks correct, and the polarity is reversed.
+- Impact: Reduced. A reversed pack forward-biases the ESD structures in the CD4013/74HC74, the ATmega, the Ra-02 and the ultrasonic module simultaneously, and would reverse-bias C3 if it survives HW-009. But the failure is caught at first power-on — the device simply does not work — so the cost is a scrapped board at the factory, not a field failure. It is a yield problem, not a reliability problem.
+- Recommended fix, cheapest first:
+  1. **Free:** put a polarity convention in the pack assembly drawing (red always to housing position 1), and add a polarity check to the production functional test (**HW-029**). This catches it before the board is powered.
+  2. **~$0.10:** a series **P-channel MOSFET ideal-diode** in the VBAT line. Roughly 20 mΩ, negligible quiescent current, and it does not eat the 0.2–0.3 V a Schottky would — which matters when the plateau is only 3.6 V and **HW-042** is already short of headroom.
+  I would take option 1 for now and option 2 only if the respin has room, since a reversed pack is caught at test either way.
+- Notes (v10): I checked whether the per-cell blocking diodes from **HW-003** would cover this. **They do not.** Those diodes sit in each cell's positive leg *inside* the pack, so with the whole pack reversed at the connector they are still forward-biased in the fault path. Worth stating explicitly so nobody assumes the HW-003 fix covers reverse polarity — it does not.
+
+---
+
 ### HW-033 — BOM omissions
 - Severity: MINOR
 - Status: OPEN
@@ -788,10 +777,30 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
+---
+
+### HW-008 — Ra-02 fed directly from a fresh Li-SOCl₂ cell, at the top of its rated supply range  ⛔ WON'T FIX (v10)
+- Original problem: The Ra-02's specified operating range is 1.8–3.7 V, and a fresh unloaded LS14500 sits at ~3.6–3.67 V. The module therefore runs at the very top of its range with almost no margin, and there is no regulation.
+- Decision: **Accepted as designed.** You tested a brand-new cell with a real module and it works. On review the risk is smaller than I first rated it: at ~3.65 V the module is *inside* the manufacturer's rated range, not outside it, so this was always a margin observation rather than a defect. The exposure window is also short — a Li-SOCl₂ cell only sits at its peak open-circuit voltage until it has delivered a little charge, then settles onto the ~3.6 V plateau for the rest of its life. The SX1278 silicon's absolute maximum is 3.9 V, so there is 250 mV before anything is at risk of damage.
+- Residual risk, accepted:
+  - The margin to the 3.7 V rated limit is roughly **50 mV**, so there is nothing left for cell-to-cell OCV spread or a future batch that runs slightly higher. If you change cell supplier, re-check the fresh OCV before assuming this still holds.
+  - One module tested at one temperature is one sample. Since you will already have the setup for the **HW-042** droop measurement, record the *upper* rail voltage in the same run, at cold as well as hot — it costs nothing extra.
+  - The rail is unregulated, so the PA sees a supply that moves with cell state and load. That affects output power stability rather than survival, and is tracked under **HW-047** where the link budget lives.
+- Notes: I checked whether the per-cell blocking diodes from HW-003 would incidentally raise the margin here. They would — a Schottky drops ~50 mV even at microamp currents, putting the module at ~3.6 V instead of 3.65 V — so if HW-003 is fixed with diodes, this concern shrinks further as a side effect.
+
+---
+
+### HW-011 — Battery and flow-switch connectors are both 2-pin JST-XH and are interchangeable  ✅ RESOLVED (v10)
+- Original problem: Two mechanically identical 2-pin JST-XH connectors on the same board. Plugging the battery into J4 would put 3.6 V onto D5 and onto the switched-ground net.
+- Resolution: **The mechanical arrangement already prevents it, and you were right to push back — I raised this without knowing the enclosure layout.** The battery connector is **inside** the sealed enclosure and is only reachable by removing the four lid screws, while the three sensor connectors face **outward** through the enclosure wall. A user replacing the battery never sees a sensor connector, and an installer connecting sensors never sees the battery connector. Each connector will also be labelled with its function. Confirmed by you, 2026-08-19.
+- Residual, handled as a production-test step rather than an open issue: during factory assembly, before the lid goes on, both the battery and the sensor connectors are briefly accessible on the same bare board. Put a polarity-and-position check in the functional test (**HW-029**) so a mis-plugged board is caught at test rather than at the customer. Physical separation on the PCB — battery connector well away from the sensor connector row — makes even that unlikely, and is worth doing in the respin at zero cost.
+
+
 ## CHANGELOG
 
 | Version | Date | Change |
 |---|---|---|
+| v10 | 2026-08-19 | **HW-008 → WON'T FIX** — tested working on a fresh cell, and on review it sits *inside* the 3.7 V rated range rather than outside; residual 50 mV margin recorded. **HW-011 → RESOLVED** — the enclosure layout already prevents it (battery connector internal, sensor connectors external, all labelled); raised without knowing the mechanical arrangement. **HW-010 MAJOR → MINOR** and corrected — JST-XH is keyed so a pack cannot be mis-mated, as you said; the surviving risk is a mis-crimped housing, which is caught at first power-on, so it is a yield issue not a reliability one. Also recorded that HW-003's per-cell diodes do **not** cover reverse polarity. **HW-012 held at MAJOR** with the mechanism explained — ESD and induced surge are independent of supply voltage, and dry dusty air makes Syria a harsher ESD environment, not a gentler one; fix tiered so 100 Ω series resistors give most of the benefit for pennies. |
 | v9 | 2026-08-19 | Range pinned down: 0.05–0.15 m to full water, 0.70–1.00 m to tank floor. **HW-030 BLOCKER → MAJOR — the v8 escalation was wrong.** With the real range the geometry inverts: objects near the lid sit at small depth where the cone is narrow, so they are excluded unless almost on-axis; a float at the water surface returns an echo at the water's own distance. Fix is a 200 mm clearance spec plus flow-switch gating, not a stilling well. Added HW-051 (blind zone against a 5 cm minimum — now the top ultrasonic risk) and HW-052 (split-transducer parallax, +7.7 % at 5 cm, exactly correctable on the Hub). HW-050 sharpened — the metal-tank RF issue is antenna *proximity*, not enclosure; λ/4 = 17 cm standoff specified. HW-023 rescaled: under ~7 mm total across the whole range once corrected. Blockers 3 → 2. |
 | v8 | 2026-08-19 | Tank sizes and mounting height received (500/1000/2000 L, plastic and metal, sensor 0.7–1.5 m above water). **HW-030 raised MAJOR → BLOCKER** with the beam geometry computed: a 60° cone reaches the sidewall at 0.87 m in a 1000 L tank against a range starting at 0.7 m, so internal obstructions — the float valve above all — sit inside the beam and the module will report a stable, plausible, permanently wrong "full". Stilling-well sizing given against the 8.6 mm wavelength; hydrostatic pressure sensing recorded as the robust alternative. Added HW-050 (metal tanks are worse on RF, thermal, acoustic and electrical grounds; both types must be supported). HW-023 error budget rescaled to the real range and restated in litres — under 1 % of tank volume is achievable once HW-030 is solved. HW-048 cross-linked to the stilling-well conflict. Blockers 2 → 3. |
 | v7 | 2026-08-19 | **HW-006 → RESOLVED** — deployment is Syria with no enforced RF power limit, so +18 dBm is available and HW-003's mandatory TX power cut is amended to optional. HW-045 material question answered: potable-rated materials specified regardless, status NEEDS INFO → OPEN. HW-027 strengthened with Syrian climate data — 70–85 °C internal is at or above PETG's glass transition, so the material change and sun shield move from advisable to necessary. Added HW-047 (433 MHz channel plan, collisions, antenna-before-PA), HW-048 (transducer and surface fouling in an uncleaned tank) and HW-049 (Hub power outages waste ~0.50 Ah and lose data). Blockers 3 → 2. |
