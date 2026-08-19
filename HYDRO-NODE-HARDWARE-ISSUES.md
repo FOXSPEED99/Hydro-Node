@@ -1,5 +1,5 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v10   |   Last updated: 2026-08-19   |   Status: Stage 0 review — 2 blockers, 2 issues closed this round
+Version: v11   |   Last updated: 2026-08-19   |   Status: Stage 0 review — 2 blockers; flow switch re-reviewed against the correct part
 
 ## STATUS SUMMARY
 Total issues: 52   |   Open: 48   |   Resolved: 3   |   Won't fix: 1
@@ -212,20 +212,6 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 - Impact: `pulseIn` at 8 MHz resolves to roughly ±4 µs, and a pin-change ISR adds 1–2 µs of latency jitter. That is only ±0.7 mm of distance error so it is not fatal — but ICP1 gives a hardware timestamp at 125 ns resolution with zero interrupt-latency jitter, it is completely free, and it lets the MCU sleep during the flight time instead of spinning in a blocking loop (which also saves awake energy). Given NFR-2 explicitly drives this design, leaving a free hardware timer on the table is not defensible.
 - Recommended fix: **Swap them — Echo to D8, LED to D7.** One net change in the respin, no cost, no extra parts.
 - Notes: This also means the ultrasonic measurement no longer blocks the CPU, which shortens the awake window and helps NFR-1.
-
----
-
-### HW-019 — HT-60 flow switch: a 220 VAC contact switched dry at ~110 µA
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: Flow switch (HT-60), J4, U2.D5
-- Problem: The flow switch in the photos is an **HT-60, rated AC 220 V 0.5 A** — a mains pump-control switch. The design uses it as a dry contact at 3.3 V, sensed through the ATmega's internal pull-up (20–50 kΩ), i.e. roughly **110 µA** of contact current. Contacts designed for mains loads rely on the arc to burn through oxide and sulphide films; at microamp levels and a few volts, that film is never broken down and the contact reads open while it is mechanically closed.
-- Impact: FR-3 fails intermittently in the field, months after installation, in a way that looks like "no fill events detected" rather than a hardware fault. This is a well-known and very hard-to-diagnose failure mode.
-- Recommended fix: Either
-  1. **Change the sensor** to one specified for low-level/dry-circuit switching (gold-plated reed contacts, rated for signal-level currents), or
-  2. **Force a wetting current.** Drive a spare GPIO high through ~330 Ω into the switch node for a few milliseconds each wake, sample D5, then release the pin. That gives ~10 mA of wetting current for a few ms per 2 minutes — an average of a few nanoamps, so it costs nothing in the power budget, and it breaks down the film. This needs one spare GPIO (A0–A5 are all free) and a resistor.
-  I recommend (2) as an addition regardless of which sensor you use, because it also protects against the same problem in any replacement part.
-- Notes: **Question: is your HT-60 normally-open (closes on flow) or normally-closed?** Confirm before firmware. Also confirm its minimum actuation flow rate against your actual fill rate — if the fill is slower than the switch's threshold, it will never trip.
 
 ---
 
@@ -642,6 +628,27 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
+### HW-019 — Flow switch contact wetting current at 3.6 V
+- Severity: MINOR *(reduced from MAJOR in v11 — I reviewed the wrong part)*
+- Status: OPEN
+- Component / net: WY-90 flow switch, J4, U2.D5
+- Problem: **Correction first.** I based the original issue on the photo in `Components Images/71ZoYQ6sslL.jpg`, which shows an **HT-60 rated AC 220 V 0.5 A** — a mains pump-control switch. Your actual part is a **WY-90, DC 12–24 V**. That is a completely different and much better proposition, and the mains-contact argument is withdrawn. See HW-033 for the BOM consequence.
+- Your question, answered: *"It's just a switch — when water flows the two wires connect. What has voltage got to do with it?"* A mechanical contact is not a perfect short, and that is the whole reason contact ratings exist:
+  1. **Contacts only touch at a few microscopic points.** The apparent contact area is large; the real conducting area is a handful of asperities.
+  2. **Those surfaces grow insulating films** — oxides, sulphides, adsorbed organics — a few nanometres to a few hundred nanometres thick. A closed contact can be mechanically closed and electrically open.
+  3. **Voltage is what breaks the film down.** The effect is called *fritting*: enough field across a thin film punches a conductive channel through it. The threshold is roughly **0.3–0.5 V**, so your 3.6 V is comfortably sufficient. **Voltage is not your problem.**
+  4. **Current is what maintains the connection.** After fritting, current has to melt and hold a metallic bridge at that channel. With the ATmega's internal pull-up (20–50 kΩ) you have only about **110 µA**, which is far below the current this switch was designed around. Too little current and the bridge is small, unstable and can re-oxidise.
+  So the "DC 12~24 V" on the label is a statement about the **maximum load the contact can switch without arc damage** — it is not a minimum needed to work, and running at 3.6 V does not violate it. The spec that actually matters here is the **minimum switching current / dry-circuit capability**, which cheap switches do not publish.
+- Impact: Much reduced. A WY-90-class in-line flow switch is almost always a spring-loaded magnet piston acting on a **hermetically sealed reed switch** — contacts in an inert atmosphere, usually rhodium or ruthenium plated. That construction is exactly what makes reed switches the standard choice for low-level signal switching, and sealed reeds routinely work at microamp levels. The residual risk is that you are still well below the part's designed operating point and cheap reeds vary batch to batch, so an occasional missed fill event over a 2-year life is possible.
+- Recommended fix — cheap insurance, take it:
+  - **Wetting pulse.** Spare GPIO → **330 Ω** → the flow-switch node. Before sampling, drive that GPIO high for ~5 ms: if the switch is closed, ~10 mA flows through the contact, which fritts and cleans any film. Then set the pin back to a hi-Z input and read D5 normally.
+  - **Cost: 0.05 mA·s per wake out of ~10 mA·s — about 0.5 % of the energy budget**, and one resistor plus one pin (A0–A5 are free). It removes the whole class of problem for essentially nothing, whatever the contact turns out to be.
+- Recommended fix — bench test to size the residual: let the switch sit unused for a week or two so any film can form, then run water and measure the node voltage with the real 30 kΩ pull-up at 3.6 V. Below ~0.4 V when flowing is a healthy contact. Repeat 50 cycles and count misses. Do this with and without the wetting pulse so you can see what it buys.
+- Notes: **Still open, and I need these before firmware.** (1) Is the WY-90 **normally open** (closes on flow) or normally closed? (2) What is its minimum actuation flow rate, and is your tank fill rate above it? A flow switch that never trips because the fill is slower than its threshold is a silent FR-3 failure that no amount of contact conditioning fixes.
+- Notes: **HW-020** is unaffected by this correction — the external pull-up, RC filter and series resistor are still needed, and the internal pull-up must still be disabled in sleep or it costs ~110 µA continuously while the switch is closed.
+
+---
+
 ### HW-033 — BOM omissions
 - Severity: MINOR
 - Status: OPEN
@@ -649,6 +656,7 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 - Problem: Comparing the BOM against the schematic and the assembly, the following are used but not listed: the **two 8-pin headers/sockets for the Ra-02** (J1, J2 — the largest single omission), the **battery holder or cell tabs** (the LS14500s in the photo are bare button-top cells with no tabs), a **DIP-14 socket** if one is used for U1, the **PCB itself**, cable glands, enclosure hardware and fasteners, conformal coating, desiccant, and the enclosure gasket.
 - Impact: An incomplete BOM means an incomplete kit at the production line and unbudgeted cost.
 - Recommended fix: Rebuild the BOM from the schematic's designator list rather than by hand, add a mechanical/consumables section, and add a **manufacturer part number and a lifecycle status** column for every line. Cross-check every designator appears exactly once.
+- Notes (v11): **Third documentation mismatch found, and this one changed a review conclusion.** The BOM lists only "Water Flow switch" with no part number; the component photo shows an **HT-60, AC 220 V 0.5 A**; the part actually fitted is a **WY-90, DC 12–24 V**. Reviewing against the photo produced a wrong severity on HW-019. Together with the LED colour (blue vs red, HW-016), the R5 value (220 Ω vs 330 Ω) and the C3 rating (16 V vs 25 V), that is four places where the documents and the built article disagree. **A full reconciliation pass is now overdue** — every line needs a manufacturer part number, and every component photo needs to be of the part actually fitted, or the next review will make the same class of error.
 - Notes: Also add: LoRa antenna, IPEX-to-SMA pigtail (listed), SMA bulkhead gasket, and the actuating magnet (listed, but with no grade or dimensions specified — see HW-015).
 
 ---
@@ -800,6 +808,7 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 | Version | Date | Change |
 |---|---|---|
+| v11 | 2026-08-19 | **HW-019 MAJOR → MINOR and rewritten** — the original review was based on the HT-60 (AC 220 V) in the component photos; the part actually fitted is a **WY-90, DC 12–24 V**, almost certainly a sealed reed, so the mains-contact argument is withdrawn. Added the contact-physics explanation: voltage fritts the surface film at 0.3–0.5 V so 3.6 V is fine, but the ~110 µA from the internal pull-up is far below the part's designed current — the label's "12~24 V" is a maximum switching rating, not a minimum. Wetting pulse retained as cheap insurance at 0.5 % of the energy budget. HW-033 updated — this is the fourth documentation-vs-hardware mismatch and the first to have caused a wrong severity, so a full BOM reconciliation is now overdue. |
 | v10 | 2026-08-19 | **HW-008 → WON'T FIX** — tested working on a fresh cell, and on review it sits *inside* the 3.7 V rated range rather than outside; residual 50 mV margin recorded. **HW-011 → RESOLVED** — the enclosure layout already prevents it (battery connector internal, sensor connectors external, all labelled); raised without knowing the mechanical arrangement. **HW-010 MAJOR → MINOR** and corrected — JST-XH is keyed so a pack cannot be mis-mated, as you said; the surviving risk is a mis-crimped housing, which is caught at first power-on, so it is a yield issue not a reliability one. Also recorded that HW-003's per-cell diodes do **not** cover reverse polarity. **HW-012 held at MAJOR** with the mechanism explained — ESD and induced surge are independent of supply voltage, and dry dusty air makes Syria a harsher ESD environment, not a gentler one; fix tiered so 100 Ω series resistors give most of the benefit for pennies. |
 | v9 | 2026-08-19 | Range pinned down: 0.05–0.15 m to full water, 0.70–1.00 m to tank floor. **HW-030 BLOCKER → MAJOR — the v8 escalation was wrong.** With the real range the geometry inverts: objects near the lid sit at small depth where the cone is narrow, so they are excluded unless almost on-axis; a float at the water surface returns an echo at the water's own distance. Fix is a 200 mm clearance spec plus flow-switch gating, not a stilling well. Added HW-051 (blind zone against a 5 cm minimum — now the top ultrasonic risk) and HW-052 (split-transducer parallax, +7.7 % at 5 cm, exactly correctable on the Hub). HW-050 sharpened — the metal-tank RF issue is antenna *proximity*, not enclosure; λ/4 = 17 cm standoff specified. HW-023 rescaled: under ~7 mm total across the whole range once corrected. Blockers 3 → 2. |
 | v8 | 2026-08-19 | Tank sizes and mounting height received (500/1000/2000 L, plastic and metal, sensor 0.7–1.5 m above water). **HW-030 raised MAJOR → BLOCKER** with the beam geometry computed: a 60° cone reaches the sidewall at 0.87 m in a 1000 L tank against a range starting at 0.7 m, so internal obstructions — the float valve above all — sit inside the beam and the module will report a stable, plausible, permanently wrong "full". Stilling-well sizing given against the 8.6 mm wavelength; hydrostatic pressure sensing recorded as the robust alternative. Added HW-050 (metal tanks are worse on RF, thermal, acoustic and electrical grounds; both types must be supported). HW-023 error budget rescaled to the real range and restated in litres — under 1 % of tank volume is achievable once HW-030 is solved. HW-048 cross-linked to the stilling-well conflict. Blockers 2 → 3. |
