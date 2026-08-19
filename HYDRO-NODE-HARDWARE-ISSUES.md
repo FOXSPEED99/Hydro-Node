@@ -1,10 +1,10 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v6   |   Last updated: 2026-08-19   |   Status: Stage 0 review — battery configuration decided pending your sign-off
+Version: v7   |   Last updated: 2026-08-19   |   Status: Stage 0 review — deployment context captured (Syria); 2 blockers left
 
 ## STATUS SUMMARY
-Total issues: 46   |   Open: 45   |   Resolved: 1   |   Won't fix: 0
-Blockers remaining: 3
-Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled without blocking diodes, the PCB has no ground plane, and the LoRa band and legal power are undefined.
+Total issues: 49   |   Open: 47   |   Resolved: 2   |   Won't fix: 0
+Blockers remaining: 2
+Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled without blocking diodes, and the PCB has no ground plane.
 
 ---
 
@@ -27,7 +27,7 @@ Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled with
      - **Ideal-diode controller per cell** (a P-FET plus controller IC). Drop is 10–30 mV instead of ~0.3 V, quiescent is a few µA. This removes the only real objection to diodes. Preferred.
      - **Low-Vf Schottky per cell** (PMEG-class, ~0.22 V at 50 mA) if an ideal-diode part is not sourceable. Acceptable.
      - Add a **PTC or fuse** in the pack lead regardless.
-  2. **Reduce TX power from +18 dBm.** This is the largest free lever in the whole design and it helps four issues at once: it cuts the dominant energy term nearly in half, it halves the peak current so the cells are inside their rating, it reduces the droop in **HW-042**, and it is very likely forced on you anyway by **HW-006** (433 MHz in ITU Region 1 is limited to 10 mW ERP). At +14 dBm two isolated cells give a **3.3× margin** on the 2-year target.
+  2. **TX power — amended in v7, no longer mandatory.** HW-006 is resolved: Syria imposes no enforced power limit, so the regulatory half of the v6 argument is gone. Two isolated cells at **+18 dBm give a 2.42× margin** (2.26× once acknowledgements are budgeted), which is a sound production figure — so run full power if the link needs it. Cutting to +14 dBm remains available and would take the margin to 3.29×, and it still helps the droop in **HW-042** and the diode drop in §10.4. Treat it as a lever you may pull, not a requirement. **Before spending battery on PA power, spend it on the antenna** — see HW-047.
 - Your concerns about diodes, answered:
   - **"Extra leakage current"** — not a real cost. In normal operation both diodes are *forward*-biased, because both cells sit at essentially the same voltage. There is no reverse bias, therefore no reverse leakage. Reverse bias only appears once the cells diverge, and then it is a few hundred millivolts at most, where Schottky leakage is negligible. Drop this from your list of worries.
   - **"Diode voltage drop / reduced headroom"** — this one is real, and it is worst exactly when you need voltage most. At +18 dBm each diode carries ~50 mA and a plain Schottky drops ~0.32 V. Worst-case rail at end of life works out to about **2.73 V** (3.2 V cell − 0.15 V cell sag − 0.32 V diode). That still clears every load — the ATmega328P needs 2.4 V at 8 MHz, the Ra-02 needs 1.8 V, the 74HC74 sees VBAT − 0.15 V through its own hold-up diode and needs 2.0 V — but the margin on the MCU is only 0.33 V, which is thinner than I would sign off for production. An ideal-diode controller takes the rail to ~3.03 V and removes the concern; cutting TX power does the same. Numbers in §10.4.
@@ -40,6 +40,8 @@ Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled with
 - Notes: **Rechargeables assessed and not recommended without a charging source** — see §10.5. Short version: over 2 years with nothing charging them, Li-ion self-discharge (~2–3 %/month) loses more than half the pack, Li-ion's 4.2 V full charge exceeds the Ra-02's 3.7 V maximum, and a lithium-ion pack sealed in a rooftop enclosure that reaches 70–80 °C is a worse safety proposition than the one you are trying to avoid. **Solar + LiFePO₄ is a genuinely credible alternative** for a device that sits in direct sun by definition, and it would delete this issue, HW-032 and most of HW-042 — but it is an architecture change with its own scope (panel, charge controller, sub-zero charge lockout, another gland). Say the word if you want it costed properly.
 - Notes: If, after the above, you decide to keep the cells hard-paralleled, tell me and I will move this to WON'T FIX with the residual risk recorded — that is your call, not mine. For a safety item, get the paralleling guidance from SAFT's own handling documentation rather than relying on my summary.
 
+---
+
 ### HW-004 — No ground plane and no copper pour anywhere on the PCB
 - Severity: BLOCKER
 - Status: OPEN
@@ -51,17 +53,6 @@ Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled with
   - **EMC:** an unplaned board with a 433 MHz PA and 300 mm of unshielded sensor cable is a radiator and a receiver. It will be hard to pass emissions testing and easy to upset.
 - Recommended fix: Respin as a **4-layer board** (signal / GND / VBAT / signal) — at this board size the cost delta is small and it removes a whole class of problems at once. If you must stay 2-layer: pour solid GND_SW on the bottom, route signals on top, stitch the pour with vias every ~5 mm, keep an unbroken plane under the Ra-02 footprint, and widen VBAT and GND_SW to ≥1.5 mm. Board is currently ~90 × 68 mm, so there is plenty of room.
 - Notes: This respin is where HW-001, HW-007, HW-013, HW-015, HW-017, HW-018 and HW-029 should all be fixed together.
-
----
-
-### HW-006 — LoRa band, region and legal radiated power are undefined
-- Severity: BLOCKER
-- Status: NEEDS INFO
-- Component / net: Ra-02 module (J1/J2), antenna
-- Problem: The Ra-02 is a **433 MHz** module (silkscreen: ISM 410–525 MHz, PA +18 dBm). Nothing in the documentation states the deployment country or the intended output power. In ITU Region 1 the 433.05–434.79 MHz band is generally limited to **10 mW ERP** with duty-cycle restrictions — +18 dBm is 63 mW and would be non-compliant. Other regions differ, and in some the whole band is unusable for this purpose.
-- Impact: A product that cannot be legally sold or installed. Also drives the link budget, and therefore the spreading factor, and therefore the battery budget (see HW-031) — so this answer changes the power design, not just the paperwork.
-- Recommended fix: Tell me the deployment country/countries. Then we fix the band, the maximum TX power, and the duty-cycle budget, and I will size the link and the spreading factor against them. If the market is EU/UK, seriously consider moving to **868 MHz (Ra-01 / SX1276)**: 25 mW (14 dBm) allowed, better antenna efficiency for a given size, and a far less congested band than 433 MHz.
-- Notes: I cannot close this one without an answer from you. Everything downstream — antenna selection, range expectation, SF choice, battery life — depends on it.
 
 ---
 
@@ -366,6 +357,8 @@ Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled with
   - Change material to **ASA-CF or PC-CF**. ASA is the standard UV-stable outdoor choice (it is what exterior automotive trim is made of) and it holds up far better in sun. PC gives a much higher service temperature if you need it.
   - Whatever the material, use a **light colour** and add a separate **ventilated sun shield** over the enclosure so the box itself never sees direct sun. This is worth more than any material change — it can drop the internal temperature by 20 °C and it also helps the battery, the electrolytic and the ultrasonic accuracy.
   - For watertightness, either **pot or conformally coat the PCB** and treat the enclosure as splash protection only, or **use an off-the-shelf IP66/67 polycarbonate enclosure** and print only the internal carrier and the tank-mount bracket. At production volume the off-the-shelf enclosure is almost certainly cheaper, more reliable, and already certified.
+- Notes (v7): **Syria makes this materially worse, and it moves from a theoretical concern to a likely failure.** Summer air temperatures across most of the country reach 35–45 °C, with intense direct sun and very high solar irradiance. A dark, sealed enclosure in that environment will reach **70–85 °C internally** — at or above PETG's ~80 °C glass transition. The enclosure will creep: screw bosses relax, gasket compression is lost, and a wall-mounted box can sag on its fixings. Combined with strong UV, PETG-CF is the wrong material for this specific site. **The sun shield is no longer optional, and I would move to ASA-CF regardless.** The high ambient also raises the electrolytic leakage in HW-009, the CD4013/74HC74 quiescent current, and MOSFET leakage — every one of the temperature-sensitive terms in the power budget sits at the bad end of its range here.
+- Notes (v7): Dust is the other Syria-specific factor. It affects the breather membrane choice in HW-028 (must be dust-tolerant, not just water-tolerant), and it is part of the fouling picture in HW-048.
 - Notes: I know NFR-4 specifies PETG-CF and I am not overriding that — this is the recommendation and the reasoning; the decision is yours. If you want to stay with PETG-CF, the sun shield becomes mandatory rather than optional, and I would want the internal temperature logged over a full summer before sign-off.
 
 ---
@@ -499,7 +492,7 @@ Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled with
 
 ### HW-045 — Tank-wall penetration and in-tank connector for the sensor harness
 - Severity: MAJOR
-- Status: NEEDS INFO
+- Status: OPEN
 - Component / net: J5 harness, tank wall/lid, ultrasonic enclosure
 - Problem: The confirmed mechanical arrangement — Node outside the tank, ultrasonic inside — means a 4-wire cable must cross the tank wall or lid. Nothing in the design defines that penetration, the connector at the in-tank end, or the materials in contact with the water or its headspace. This is new information from v5 and had no issue before now.
 - Impact: Three separate risks:
@@ -511,8 +504,56 @@ Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled with
   - Prefer a **single unbroken cable** from the Node enclosure to the potted sensor assembly — no connector inside the tank at all. Terminate only at the Node end, where it is dry and serviceable.
   - Specify a **potable-rated cable jacket and gland** if the tank is for drinking water, and record the certification in the BOM.
   - Where possible penetrate the **lid, not the wall** — a lid penetration is above the waterline and any leak is a drip, not a drain.
-- Notes: **Question for you: is this tank potable water or non-potable (irrigation, flushing, cooling)?** The answer changes the material specification and possibly the certification path, so I need it before the mechanical design can be signed off.
+- Notes (v7, answered): The tank is **rated potable and filled with potable water**, though in practice it is used for washing rather than drinking because the water fouls over time. **Decision: specify potable-rated materials anyway** — cable jacket, gland, potting compound and enclosure. The reasoning is practical, not regulatory: potable-rated cable and glands are commodity parts with almost no cost delta, you cannot control what a future customer does with a tank that is *rated* potable, and specifying it once removes the question permanently instead of leaving it to be re-argued at production. Record the certification in the BOM (HW-033).
+- Notes (v7): Your description of the tank fouling — surface going brown, sediment and growth building up because nobody cleans it — is directly relevant to the measurement and had not been captured anywhere. Raised as **HW-048**.
 - Notes: The cable also runs within centimetres of a 433 MHz PA. Keep it away from the antenna, and see HW-012 — the ESD and series-resistor protection on D6/D7 matters more now that the run is longer and passes through a wall.
+
+---
+
+### HW-047 — 433 MHz channel plan, co-existence and multi-node collisions
+- Severity: MAJOR
+- Status: OPEN
+- Component / net: Ra-02, antenna, system
+- Problem: HW-006 removed the *regulatory* constraint on the band, but not the physical one. 433 MHz is a shared ISM band everywhere, and with no regulator assigning channels **you have to do the channel planning yourself**. Two distinct sources of interference: other equipment in the band, and your own Nodes interfering with each other.
+- Impact: Lost packets look like a dead Node to the Hub, and every retry costs battery. In a dense deployment — several buildings, several Nodes each — self-interference becomes the dominant failure mode, and it gets worse the higher you set the PA.
+- Recommended fix:
+  1. **Avoid 433.92 MHz.** That is the default frequency for car key fobs, garage remotes, doorbells and weather stations across the region, and it is the busiest slice of the band. Pick something well clear of it — 434.4 MHz or 433.3 MHz — and confirm with a quick spectrum sweep at a real installation site before locking it in.
+  2. **Randomise the wake offset per Node.** Nodes that power up together will transmit together forever, and two Nodes on the same channel transmitting simultaneously both fail. Add a per-Node pseudo-random jitter of ±5–10 s to the 120 s interval, seeded from the Node's serial number (HW-029). Costs nothing and removes the systematic collision.
+  3. **Acknowledge every packet.** The Node needs to know whether the Hub heard it, both for retries and for the backoff in **HW-049**. Budget ~80 ms of RX at 10.8 mA per wake — that is 0.86 mA·s, about 8 % of the per-wake energy, and it takes the two-cell margin from 2.42× to 2.26×. Worth it.
+  4. **Fix the antenna before raising the PA.** Going from +14 to +20 dBm is 6 dB and costs roughly 2.7× the transmit energy on every single packet, forever. Going from a whip lying against a metal tank to a properly mounted vertical whip with a ground plane, clear of the tank body, is easily 6–10 dB **and costs nothing**. Spend the link budget on the antenna first, then decide how much PA you actually need.
+- Notes: Also relevant to the Stage 6 pairing protocol — proximity-gated pairing depends on RSSI, and a congested channel makes RSSI gating less reliable. Worth choosing the channel before designing the pairing handshake.
+- Notes: If you eventually deploy many Nodes per Hub, consider putting different Hubs on different channels rather than relying on address filtering alone. Decide this before the first production run, because changing it later means touching every installed device.
+
+### HW-048 — Transducer and water-surface fouling in an uncleaned tank
+- Severity: MAJOR
+- Status: OPEN
+- Component / net: RCWL-1670 transducers, mechanical
+- Problem: You described the tank as fouling over time — the surface going brown, sediment and growth accumulating, and nobody ever cleaning it. That is the normal state of an unmaintained rooftop tank, and it has two direct consequences for an ultrasonic level sensor that nothing in the design accounts for.
+- Impact:
+  1. **Fouling on the transducer faces.** Dust entering the tank, condensation, and airborne growth will build a film on the two transducer faces over months. Ultrasonic transducers are very sensitive to anything on the radiating surface — a film attenuates both the transmitted pulse and the returning echo. The failure is gradual: range shortens, then readings become intermittent, then they stop. It reads as a flaky sensor, not as a dirty one.
+  2. **Scum on the water surface.** A thick layer of surface scum or biofilm is acoustically soft — it absorbs rather than reflects. Depending on thickness you get a weak echo, no echo, or an echo from the top of the scum layer rather than the water itself. The last case is the dangerous one: a plausible-looking reading that is systematically wrong by the scum depth.
+- Recommended fix:
+  - **Make the sensor assembly serviceable without breaking the main enclosure seal.** The transducers will need wiping at some interval. Design the in-tank sensor as a separate potted module on its cable that can be unclipped, cleaned and refitted from the tank hatch. This is a mechanical requirement, and it needs to be decided now — retrofitting serviceability is not possible.
+  - **Angle or shield the transducer faces** so falling dust and condensate do not settle directly on them. Facing straight down is the best case; a small shroud helps further.
+  - **Detect degradation rather than waiting for failure.** Have the Node report echo quality alongside distance — pulse width, or the number of consecutive failed readings out of the sample set. A slow trend in that number is the fouling signal and gives the Hub something to raise a maintenance alert on, months before readings are lost.
+  - **Reject implausible readings in firmware**: median of N samples, and discard readings that jump more than physically possible between 2-minute cycles.
+- Notes: This interacts with **HW-030** — a stilling well would shield the beam from sidewall echoes but would also collect scum inside it, which could be worse than no well at all in this tank. Decide the two together once tank dimensions are known.
+- Notes: **Question for you: is the tank hatch accessible for a person to reach the sensor?** If not, the serviceability requirement above changes into a "design for zero maintenance" requirement, which is a much harder problem and would push toward a non-contact alternative such as a pressure sensor at the tank base.
+
+### HW-049 — Hub power outages waste Node battery and lose data
+- Severity: MAJOR
+- Status: OPEN
+- Component / net: System — Node firmware, Hub power
+- Problem: The Hub is mains powered. In Syria, extended and frequent grid outages are normal. Nothing in the current architecture says what the Node does when the Hub is not there — and with no acknowledgement in the design (**HW-047**), the Node cannot even tell.
+- Impact: Two costs, one of which is large.
+  1. **Battery.** A Node that keeps transmitting on schedule into a dead Hub spends full transmit energy for nothing. At 8 hours of outage per day, that is 240 wasted transmissions daily. Over two years it burns **~0.50 Ah — about 11 % of the whole 4.4 Ah pack** thrown away.
+  2. **Data loss.** Every reading taken while the Hub is down is gone. For a system whose purpose is a continuous level record, an 8-hour hole every day is a serious gap.
+- Recommended fix:
+  1. **Acknowledge and back off.** Once acknowledgements exist (HW-047), a Node that misses several in a row should stretch its interval — 2 min → 10 min → 30 min — and return to normal on the first successful ack. Backing off to 30 minutes during outages recovers essentially all of that 0.50 Ah. This is the single highest-value firmware behaviour in the whole design after sleep current.
+  2. **Buffer in RAM during the outage.** The Node stays powered in deep sleep, so SRAM survives. Roughly 1 KB of spare SRAM at ~8 bytes per reading holds about 125 readings — around 4 hours at the normal interval, or much longer once backed off. Send the backlog when the Hub returns. **Do not buffer to the ATmega's EEPROM**: at 720 writes a day its 100,000-cycle endurance is consumed in well under a year without wear levelling.
+  3. **Give the Hub a battery backup.** The Hub is mains powered and has a screen, Wi-Fi and a database link — a small UPS or an internal cell keeps the whole system alive through an outage and makes points 1 and 2 rarely needed. This is a Hub-side change and belongs in the Hub design, but it is recorded here because the Node's battery budget depends on it.
+- Notes: This also affects the pairing protocol in Stage 6 — a Node that cannot reach its Hub for a day must not conclude it has been unpaired and drop back to pairing mode.
+- Notes: The backoff interacts with **HW-031**. Both point the same way: the fixed 2-minute interval is the most expensive assumption in the design, and making the interval adaptive — faster while filling, slower when idle, much slower when the Hub is unreachable — buys back more battery than any component change on this list.
 
 ---
 
@@ -641,10 +682,21 @@ Production-ready: NO — the two Li-SOCl₂ cells are still hard-paralleled with
 
 ---
 
+### HW-006 — LoRa band, region and legal radiated power are undefined  ✅ RESOLVED (v7)
+- Original problem: The Ra-02 is a 433 MHz module rated +18 dBm, and nothing stated the deployment country or the intended output power. In ITU Region 1 the 433 MHz band is generally limited to 10 mW ERP, which +18 dBm (63 mW) would breach — making the legal power a hard input to the link budget and therefore to the battery budget.
+- Resolution: **Deployment is Syria, and you have confirmed no enforced constraint on band or radiated power.** The regulatory input to the design is therefore removed: the Ra-02 may run at its full +18 dBm, and TX power becomes a pure engineering trade between link margin, battery life and self-interference rather than a compliance limit. Confirmed by you, 2026-08-19.
+- What this unlocks: the v6 recommendation to cut TX power rested on two independent arguments — regulation and battery. Only the regulatory one disappears. At **+18 dBm with two isolated LS14500s the margin is 2.42×** (2.26× once per-packet acknowledgements are budgeted), so full power is affordable. **HW-003's recommendation is amended accordingly: keep the two-cell isolation, drop the mandatory power cut.**
+- Residual, tracked elsewhere — not reasons to reopen:
+  - Channel selection, co-existence with other 433 MHz users, and collisions between Hydro Nodes are **HW-047**. Interference is physics, not law, and it does not go away with the regulator.
+  - Export beyond Syria would reintroduce compliance. Note it if the market ever widens; not a design constraint today.
+
+---
+
 ## CHANGELOG
 
 | Version | Date | Change |
 |---|---|---|
+| v7 | 2026-08-19 | **HW-006 → RESOLVED** — deployment is Syria with no enforced RF power limit, so +18 dBm is available and HW-003's mandatory TX power cut is amended to optional. HW-045 material question answered: potable-rated materials specified regardless, status NEEDS INFO → OPEN. HW-027 strengthened with Syrian climate data — 70–85 °C internal is at or above PETG's glass transition, so the material change and sun shield move from advisable to necessary. Added HW-047 (433 MHz channel plan, collisions, antenna-before-PA), HW-048 (transducer and surface fouling in an uncleaned tank) and HW-049 (Hub power outages waste ~0.50 Ah and lose data). Blockers 3 → 2. |
 | v6 | 2026-08-19 | HW-003 recommended fix revised for real part availability (LS26500 not sourceable): keep two LS14500 in parallel with per-cell isolation — ideal-diode controller preferred, low-Vf Schottky acceptable — and cut TX power. Answered the diode leakage concern (unfounded — diodes are always forward-biased) and the drop concern (real, quantified, ~2.73 V worst case). Rejected the one-cell-plus-bulk-capacitor option with arithmetic (needs 36,000 µF) and the one-cell-plus-supercap option on energy margin (1.21×). HW-009 updated with the same arithmetic. Rechargeable and solar options assessed in reference §10.5. No change to issue counts. |
 | v5 | 2026-08-19 | **HW-002 → RESOLVED** (LED and MIC5205 removed per module, already done on the current build). HW-001 BLOCKER → MAJOR and reframed — assembly method confirmed, but the harness is a cross-over cable with no controlled drawing. HW-005 BLOCKER → MAJOR and reframed around the transducer feedthrough now that the sensor gets its own in-tank enclosure. HW-003 → IN DISCUSSION with a full answer to the matched-voltage argument; single larger cell (LS26500) now the preferred fix. Added HW-045 (tank-wall penetration, in-tank connector, potable-water materials) and HW-046 (check for a D13 LED on the SPI clock). Blockers 6 → 3. |
 | v4 | 2026-08-19 | HW-043 rewritten — the v3 firmware-only-OFF proposal is **withdrawn**; it contradicted HW-021's own reasoning by making OFF firmware-dependent. Magnet keeps full on/off control; the fix is a Schmitt buffer plus an inverted 1 MΩ reed connection (also drops magnet-resting standby from 360 µA to 3.6 µA). Added HW-044 (LED cannot confirm power-off, carries no state). HW-016 escalated in emphasis — the LED is now load-bearing. HW-014 Schmitt buffer requirement reinstated. HW-041 note updated; part decision unchanged. |
