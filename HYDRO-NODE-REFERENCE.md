@@ -556,3 +556,102 @@ Its own scope, if you want it costed: panel and mounting, a charge controller wi
 2. Drop TX power from +18 dBm. It is the single largest lever available: it nearly halves the dominant energy term, halves the peak current so the cells sit inside their rating, reduces the HW-042 droop, and is very likely forced by **HW-006** anyway.
 
 That gives a **3.3× margin** on the 2-year target at +14 dBm, which is the kind of headroom a production claim needs.
+
+---
+
+## 11. Ground plane: mechanism and implementation (HW-004)
+
+### 11.1 Why it is not about resistance
+
+| Property of the current 1 mm / 35 µm trace | Value |
+|---|---|
+| DC resistance | 0.48 mΩ/mm — a 100 mm run is 48 mΩ, i.e. **5.8 mV at 120 mA**. Irrelevant. |
+| Inductance, no plane beneath | **~1 nH/mm** |
+| Impedance of a 100 mm ground run at 433 MHz | **272 Ω** |
+| Same connection with a plane and a short via (~1–2 nH) | **2.7–5.4 Ω** |
+
+The Ra-02's ground connection is presently around **272 Ω at its own operating frequency**, not 0 Ω. That single number is the issue.
+
+### 11.2 Return current — the mechanism
+
+Current flows in loops; it does not stop at a GND pin. What changes with frequency is the route the return takes:
+
+- **At DC** it follows the path of least **resistance**.
+- **Above roughly 100 kHz** it follows the path of least **inductance**, which is directly underneath the outgoing trace, as close as the dielectric allows.
+
+A plane lets the return do that naturally. Without one it is forced along whatever route was drawn, and the outgoing and returning currents enclose a large area.
+
+| | Loop area | Note |
+|---|---|---|
+| No plane, 100 mm out / 100 mm back, 20 mm apart | 2000 mm² | radiated field ∝ area |
+| Plane, return hugging the trace across 1.6 mm of board | 160 mm² | **12× smaller** |
+
+### 11.3 Radiation: why 433 MHz makes the traces themselves antennas
+
+Wavelength at 433 MHz is 69.3 cm, and a conductor radiates usefully above about λ/20 = 3.5 cm.
+
+| Trace length | Fraction of λ | Behaviour |
+|---|---|---|
+| 5 cm | λ/14 | efficient radiator |
+| 10 cm | λ/7 | efficient radiator |
+| 15 cm | λ/4.6 | efficient radiator |
+
+Energy leaving through the PCB is energy that did not leave through the antenna, and it couples straight back into the Node's own receiver.
+
+### 11.4 The four consequences on this board
+
+1. **Ra-02 matching detuned.** The module's PA and matching network assume a solid ground under the footprint. An inductive ground shifts the match, costing TX power and RX sensitivity — on a 50 m concrete link (HW-047) that is margin you cannot spare.
+2. **The board radiates**, per §11.3.
+3. **Common-impedance coupling.** Ultrasonic, MCU and LoRa return currents share one conductor, so each one's current appears as a voltage to the others. This lands directly on the echo threshold (NFR-2).
+4. **Susceptibility.** A 2000 mm² loop is as good at receiving interference as at radiating it, and there is no low-impedance path to shunt the ESD and surge transients from **HW-012**.
+
+### 11.5 Which ground gets the plane — specific to this design
+
+There are **two** ground nets, separated by Q1:
+
+| Net | Carries | Plane treatment |
+|---|---|---|
+| **GND_SW** (NET03) | Return for LoRa, MCU, ultrasonic, temp, flow, LED — every signal and every load | **This is the main pour** |
+| **GND_RAW** (NET01) | Battery negative, MOSFET source, latch circuit (µA) plus the total load current through Q1 | Small local pour around U1/S1/Q1, plus one short wide link from Q1 source to the battery connector |
+
+Place **Q1 physically adjacent to the battery connector** so the GND_RAW segment is a few millimetres rather than a board-crossing trace. In the OFF state the GND_SW pour floats up with everything else on it — that is expected and harmless, but be aware the pour is not an earth reference.
+
+### 11.6 Implementation order
+
+Do these in sequence. A pour will not rescue a bad floorplan.
+
+1. **Floorplan.** Battery connector + Q1 together in one corner. Ra-02 header adjacent to the antenna connector. Sensor connectors on the opposite edge from the RF. MCU between. Reed at the enclosure wall (HW-015). Decoupling caps within a few mm of the pins they serve (HW-013).
+2. **Flip the routing.** Signals on **Top**, pour on **Bottom**. Currently it is backwards — 227 tracks on Bottom, 6 on Top.
+3. **Pour GND_SW** on the Bottom layer, solid fill.
+4. **Add vias.** The board currently has **zero**. Every GND pin gets its own via into the pour; stitch every ~5 mm around the board edge and around the Ra-02 footprint.
+5. **Repour and inspect** for isolated copper islands.
+
+### 11.7 Altium steps
+
+| Step | Menu |
+|---|---|
+| Confirm the stack | `Design → Layer Stack Manager` |
+| Create the pour | `Place → Polygon Pour` (shortcut **P, G**). Set **Fill Mode = Solid**, **Layer = Bottom Layer**, **Connect to Net = GND_SW**, tick **Remove Dead Copper** |
+| Pad connection style | `Design → Rules → Plane → Polygon Connect Style`. Use **Direct Connect** for the Ra-02 ground pins (lowest inductance); **Relief Connect** for hand-soldered through-hole pins so they are solderable |
+| Stitching vias | `Tools → Via Stitching/Shielding → Add Stitching to Net` — net GND_SW, ~5 mm grid |
+| Rebuild | `Tools → Polygon Pours → Repour All` |
+| Verify | `Tools → Design Rule Check`, and visually scan for isolated islands and for slots |
+
+### 11.8 The mistakes that make a plane useless
+
+- **Do not cut long slots through the pour.** A signal routed across the bottom layer splits the plane, and the return current must detour around the slot — recreating the large loop the plane was meant to remove. A slotted plane can be worse than no plane at that spot. Where a signal must cross to the bottom, keep the crossing short and place ground vias either side of it.
+- **Keep the area under the Ra-02 footprint completely solid** — no traces beneath it.
+- **Do not rely on the pour to carry the connection.** Give each ground pin its own via; a pad touching the pour only through a thermal relief with one spoke is a poor RF ground.
+- **Do not pour both grounds as one.** GND_SW and GND_RAW are separated by Q1 and must stay separate, or the master power switch is bypassed.
+
+### 11.9 2-layer or 4-layer
+
+**2-layer is adequate here** provided signals go on Top and the Bottom is poured solid. The board is not dense (~90 × 68 mm, 233 tracks) and the move to SMD under **HW-026** makes single-layer signal routing considerably easier. 4-layer would be more forgiving of routing mistakes but is not required.
+
+One thing already right in the current design: the Ra-02 feeds its antenna through an **IPEX pigtail**, so RF never travels through the PCB. The plane is needed for the module's ground *reference*, not to carry RF — that class of problem does not apply here.
+
+### 11.10 Verification
+
+- **Before/after RSSI.** Have the Hub log RSSI from the same Node at the same location with the old board and the new one. The improvement in the Ra-02's ground reference should be directly visible.
+- **Isolated-island check** after the repour.
+- Confirm every Ra-02 GND pin (J1.1, J1.2, J2.1, J2.8 — see **HW-007**) is connected, not just one.
