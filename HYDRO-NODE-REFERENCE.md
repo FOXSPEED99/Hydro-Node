@@ -249,7 +249,9 @@ One caveat for the 74HC74 (not the HCS74): the 10 ms RC edge on CLR is extremely
 | Output drive | ~0.5 mA | ±4 mA | ±4 mA |
 | DIP available for bench work | Yes | Yes | **No** (TSSOP/SOIC only) |
 
-**Recommendation: SN74HCS74 for production, because it fixes the characterisation gap and deletes a part.** Verify quiescent current at 3.6 V from the vendor datasheet before committing — that number is not yet confirmed here.
+**DECIDED (v3): fit the 74HC74** — the Toshiba TC74HC74AP already on the bench. Its 2 V minimum doubles the droop margin over the CD4013BE's 3 V, which under **HW-042** is the real reason for the change. The SN74HCS74 remains the better production part if a non-DIP package is acceptable, but under **HW-043** the latch no longer uses the CLOCK input, so its Schmitt-trigger advantage no longer buys anything here.
+
+Note that §7.1–§7.3 below describe the **toggle** migration (clock-driven). If HW-043 is adopted, use **§8 instead** — it is simpler and supersedes most of this.
 
 **Warning: 74HCT74 will not work.** TTL input thresholds, V_CC = 4.5–5.5 V. One letter apart from the correct part and physically identical. Check the marking.
 
@@ -263,3 +265,96 @@ Run all four steps on each candidate at **3.6 V** from a current-limited bench s
 4. **Same test with a Schmitt buffer in front.** Both parts should now be perfect. If they are, that confirms the buffer is the real fix and the flip-flop family is a secondary choice — which is what HW-041 assumes.
 
 Record the results against HW-041 and HW-014, and I will close them out.
+
+---
+
+## 8. Recommended power-latch circuit (HW-041 + HW-042 + HW-043)
+
+Supersedes §7.1–§7.3. Built around the 74HC74 already on the bench. Low-side switching is retained — it works and was verified clean in §3.
+
+### 8.1 Circuit
+
+```
+                    D1 (BAT54 Schottky)
+   VBAT ─────┬────────►|────────┬──────── VLATCH ──── U1 pin 14 (VCC)
+             │                  │
+             │            C_hold 10 µF X7R
+             │                  │
+             │                 GND_RAW
+             │
+             │   R_pu 1 MΩ
+   VLATCH ───┴───/\/\/\───┬──── U1 pin 4  (1PRE, active low)
+                          │
+                          ├──── C_f 100 nF ──── GND_RAW      (reuse C1)
+                          │
+                          ├──── R_sense 100 kΩ ──── MCU A0   (magnet sense, input)
+                          │
+                          └──── S1 reed ── R_s 1 kΩ ──── GND_RAW
+
+   VLATCH ───/\/\/\───┬──── U1 pin 1  (1CLR, active low)
+             R_por 1 MΩ │
+                        ├──── C_por 100 nF ──── GND_RAW      (reuse C2)
+                        │
+                        └──── R_mcu 100 kΩ ──── MCU A1       (shutdown, normally hi-Z input)
+
+   U1 pin 5  (1Q)  ──── R2 1 kΩ ──── Q1 gate     (R1 1 MΩ gate pulldown to GND_RAW, unchanged)
+   U1 pin 3  (1CLK) ─── GND_RAW      unused, must not float
+   U1 pin 2  (1D)   ─── GND_RAW      unused, must not float
+   U1 pin 12 (2D)   ─── GND_RAW      unused, must not float
+   U1 pin 11 (2CLK) ─── GND_RAW      unused, must not float
+   U1 pin 10 (2PRE) ─── VLATCH       active low, tie HIGH to disable
+   U1 pin 13 (2CLR) ─── VLATCH       active low, tie HIGH to disable
+   U1 pin 8, 9      ─── open         unused outputs
+   U1 pin 7  (GND)  ─── GND_RAW
+```
+
+### 8.2 Operation
+
+| Event | PRE | CLR | Q | Device |
+|---|---|---|---|---|
+| Battery first fitted, no magnet | H | **L** (C_por discharged, 100 ms) | L | OFF |
+| Magnet approaches | **L** | H | H | **ON** |
+| Magnet removed | H | H | H (held) | ON |
+| Reed bounces during approach | L, H, L, H, L | H | H | ON — bounce is harmless |
+| MCU asserts shutdown (reed open) | H | **L** | L | OFF |
+| MCU resets or crashes | H | H (pin reverts to hi-Z input) | unchanged | stays ON |
+| Fault: PRE and CLR both low | L | L | **H** | stays ON — fails safe |
+
+### 8.3 Why this removes three open issues
+
+- **Bounce (HW-014).** PRE is a level input. Repeated assertions all mean "ON". Schmitt buffer deleted, R3 deleted.
+- **Transition rate (HW-037, part of HW-041).** Asynchronous inputs have no transition-rate requirement, so the CD4013B-vs-74HC74 edge-tolerance argument is moot.
+- **Reed standby current.** A level input tolerates a 1 MΩ source. Magnet held on the enclosure: **3.6 µA**, down from 360 µA with the old 10 kΩ pull-down.
+
+### 8.4 Numbers
+
+| Quantity | Value | Working |
+|---|---|---|
+| Latch hold-up sag over a 60 ms TX burst | ~6 mV | ΔV = I·t/C = 1 µA × 0.06 s / 10 µF |
+| D1 forward drop at ~1 µA | ~0.15 V | Schottky, low-current region — **verify on the bench** |
+| VLATCH at a 3.0 V end-of-life cell | ~2.85 V | vs 74HC74 minimum 2.0 V → 0.85 V margin |
+| Reed closed, standby current | 3.6 µA | 3.6 V / 1 MΩ |
+| PRE node rise after magnet removal | ~300 ms | 3 × R_pu · C_f = 3 × 1 MΩ × 100 nF |
+| PRE node fall on magnet contact | ~300 µs | 3 × R_s · C_f = 3 × 1 kΩ × 100 nF |
+| Power-on reset width | ~100 ms | R_por · C_por = 1 MΩ × 100 nF |
+| MCU pulling CLR low, divider result | ~0.33 V | 3.6 V × 100 kΩ / (1 MΩ + 100 kΩ), vs V_IL = 0.3 × V_CC = 1.08 V |
+
+The ~300 ms PRE recovery is not a defect — it is a free interlock. Firmware cannot assert CLR until PRE has returned high, which is exactly the required sequencing.
+
+### 8.5 Parts delta from the current board
+
+**Add:** D1 Schottky, C_hold 10 µF X7R, R_pu 1 MΩ, R_s 1 kΩ, R_sense 100 kΩ, R_mcu 100 kΩ.
+**Delete:** R3 (10 kΩ), and the Schmitt-trigger buffer that HW-014 would otherwise have required.
+**Reuse unchanged:** R1 1 MΩ, R2 1 kΩ, C1 100 nF (now C_f), C2 100 nF (now C_por), Q1, S1.
+**Change value:** R4 100 kΩ → 1 MΩ as R_por (or keep 100 kΩ and use 1 µF for C_por).
+**Replace:** CD4013BE → TC74HC74AP.
+**MCU pins:** A0 (magnet sense, input), A1 (shutdown, hi-Z input except during a commanded shutdown).
+
+### 8.6 Bench validation before this is accepted
+
+1. **Droop measurement (HW-042, mandatory).** Scope VBAT at U1 pin 14 during a real +18 dBm transmission, on cells left idle at least a week so passivation is present, at room temperature and at the coldest expected temperature. Record the minimum. Below the fitted logic's minimum supply, HW-042 escalates to BLOCKER.
+2. **Turn-on reliability.** 200 magnet approaches through the production enclosure wall at the production standoff. Every one must turn the device on. Zero failures required.
+3. **Accidental turn-off.** 200 magnet approaches with the device already on. It must remain on every time. Zero turn-offs required.
+4. **Commanded turn-off.** 50 full gestures. Each must shut down cleanly, and releasing the magnet early must do nothing.
+5. **Reset immunity.** Pull the MCU's RESET line low while the device is on. The latch must hold and the device must come back up.
+6. **Standby current.** Measure with the device off, and again with a magnet held on the reed. Expect sub-µA and ~3.6 µA respectively.
