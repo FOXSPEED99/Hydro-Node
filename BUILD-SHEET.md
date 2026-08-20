@@ -1,376 +1,317 @@
-# HYDRO NODE — COMPLETE BUILD SHEET
-Everything to add, remove, replace, and every wire. Final prototype build.
-
-**Read Section 0 before you pick up the soldering iron.** It changes two component values on the reed circuit compared to your current build.
+# HYDRO NODE — BUILD SHEET
 
 ---
 
-## 0. THE REED CIRCUIT — RESOLVED, NO EXTRA CHIP NEEDED
+## 1. REMOVE — do not fit these
 
-Earlier versions of this sheet asked whether you had a `74HC14` Schmitt inverter. **You do not need one.** A resistor value change achieves nearly the same result.
-
-> Note the part numbers are one digit apart and are completely different chips:
-> **74HC74** = dual D flip-flop — your power latch, U1. You have this.
-> **74HC14** = hex Schmitt inverter — the debounce buffer. Not required.
-
-**Keep the reed wired as it is now** (reed to VBAT, pull-down to ground), and make two changes:
-
-| Change | From | To |
-|---|---|---|
-| **R3 pull-down** | 10 kΩ | **470 kΩ** |
-| **Series resistor** | none | **100 Ω** between the reed and the node |
-
-### Why this works
-
-| | R3 = 10 kΩ | **R3 = 470 kΩ** |
-|---|---|---|
-| Magnet resting on the enclosure | 360 µA | **7.7 µA** — 47× better |
-| Node recovery time constant | 1 ms | **47 ms** |
-| 0.2 ms contact bounce → node falls | 18 % | **0.4 %** |
-| 0.5 ms contact bounce → node falls | **39 % — extra toggle likely** | **1.1 % — no extra edge** |
-| 1.0 ms contact bounce → node falls | **63 % — extra toggle** | **2.1 % — no extra edge** |
-
-The bounce problem disappears by the same mechanism a Schmitt trigger would use: during a bounce the node never falls far enough to produce a second edge. The **rising** edge on magnet approach — the one the flip-flop acts on — stays fast.
-
-The 100 Ω series resistor limits contact inrush into C1 and gives a **10 µs** attack, far faster than the clock input requires. Voltage error when closed: 0.8 mV.
-
-**Why not 1 MΩ?** The 74HC74's input leakage is ±1 µA worst case, which at 1 MΩ could lift the low level to 1.0 V. At 470 kΩ it is 0.47 V, against a spurious-toggle threshold of 2.52 V. 470 kΩ keeps real margin.
-
-Wiring is in **section 5**. There is only one circuit now — the old A/B split is gone.
-
----
-
-## 1. PARTS — WHAT TO HAVE ON THE BENCH
-
-### Keep from the current build
-
-| Part | Note |
+| Part | |
 |---|---|
-| Arduino Pro Mini 3.3 V | Power LED and regulator already removed ✓ |
-| Ra-02 SX1278 module | |
-| Reed switch S1 | |
-| IRLZ44N (Q1) | Fine for the prototype. Gets replaced on the PCB (HW-017) |
-| R1 1 MΩ, R2 1 kΩ | Gate pulldown and gate series — unchanged |
-| R6 4.7 kΩ | 1-Wire pull-up |
-| C4, C5 — 100 nF | |
-| RCWL-1670, WY-90, DS18B20 | |
-| JST connectors | |
-| 2 × LS14500 | |
+| CD4013BE | replaced by 74HC74 |
+| C3 — 2200 µF electrolytic | not fitted at all |
+| Blue LED | replaced by red |
+| R5 — 220 Ω / 330 Ω | replaced by 1 kΩ |
+| R3 — 10 kΩ | replaced by 470 kΩ |
 
-### Buy / find
+## 2. REUSE from the old build
 
-| Qty | Part | For |
-|---|---|---|
-| 1 | **470 kΩ resistor** | Reed pull-down — replaces R3 10 kΩ (§0) |
-| 3 | **`1N5819`** Schottky | 2 for cell isolation, 1 for the latch rail |
-| 1 | **0.5 A fuse** + holder | Battery pack protection |
-| 1 | **DS18B20** (second one) | Thermal gradient (HW-023) |
-| 1 | **Red or yellow LED** | Blue has no headroom at 3.0 V (HW-016) |
-| 1 | 1 MΩ resistor | Flow pull-up |
-| 1 | 1 kΩ resistor | LED series (replaces 330 Ω) |
-| 1 | 100 kΩ resistor | MCU shutdown line |
-| 7 | **100 Ω resistors** | Series protection on D4, D5, D6, D8, A0, plus reed series and reed→A0 |
-| 1 | 330 Ω resistor | Flow wetting pulse |
-| 1 | 1 µF capacitor | *Only if* you use the old R4 100 kΩ for the power-on reset — see below |
-| 1 | 10 µF ceramic | Latch rail hold-up |
-| 1 | 100 µF ceramic (or 47 µF) | Bulk near the radio (replaces C3) |
-| 5 | 100 nF ceramic | Decoupling |
-| 1 | 10 µF ceramic | Decoupling at the radio |
+Arduino Pro Mini 3.3 V (LED + regulator already removed) · Ra-02 · reed switch · IRLZ44N · R1 1 MΩ · R2 1 kΩ · R6 4.7 kΩ · R4 100 kΩ · C1 100 nF · C2 100 nF · C4 100 nF · C5 100 nF · all JST connectors · RCWL-1670 · WY-90 · DS18B20 · 2 × LS14500
 
-**Power-on reset (R_por / C_por):** either a **1 MΩ + 100 nF**, or reuse the old **R4 100 kΩ with a 1 µF**. Both give ~100 ms. Use whichever pair you have.
+## 3. BUY / FIND
 
-### Do NOT fit
-
-| Part | Why |
+| Qty | Part |
 |---|---|
-| **CD4013BE** | Replaced by the 74HC74 — 2 V minimum instead of 3 V (HW-041) |
-| **R3, 10 kΩ** | Keep the position, fit **470 kΩ** instead (§0) |
-| **C3, 2200 µF electrolytic** | Leaks, poor cold ESR, and cannot buffer a transmit burst anyway (HW-009) |
-| **Blue LED, R5 330 Ω** | Replaced by red + 1 kΩ |
+| 1 | 74HC74 (you have it) |
+| 3 | 1N5819 |
+| 1 | 0.5 A fuse + holder |
+| 1 | DS18B20 — second one |
+| 1 | Red or yellow LED |
+| 1 | 470 kΩ |
+| 2 | 1 MΩ |
+| 1 | 1 kΩ |
+| 6 | 100 Ω |
+| 1 | 330 Ω |
+| 5 | 100 nF ceramic |
+| 2 | 10 µF ceramic |
+| 1 | 100 µF ceramic |
 
 ---
 
-## 2. THE FIVE RAILS
+## 4. RAIL NAMES
 
-Everything below refers to these names. Write them on masking tape and stick it to the board.
-
-| Name | What it is |
+| Name | |
 |---|---|
-| **VBAT** | Battery positive, after the diodes and fuse |
-| **GND_RAW** | Battery negative |
-| **GND_SW** | Switched ground — the MOSFET drain. **Everything that turns off connects here** |
-| **VLATCH** | VBAT through a Schottky — powers the 74HC74 and the reed pull-up only |
-| **REED_N** | The reed switch node |
+| VBAT | battery + after fuse |
+| GND_RAW | battery − |
+| GND_SW | MOSFET drain |
+| VLATCH | VBAT through D1 |
+| REED_N | reed node |
+| TEMP_BUS | 1-Wire data |
+| TEMP_VCC | Pro Mini D3 |
+| FLOW_N | flow switch node |
+| U_TRIG / U_ECHO | ultrasonic signals |
 
-> ⚠️ **GND_RAW and GND_SW are two different rails.** They are separated by the MOSFET — that separation *is* the power switch. If you join them anywhere, the device can never turn off. This is the single easiest way to ruin the build.
-
----
-
-## 3. BATTERY PACK
-
-Build this as a sealed unit with one connector (HW-003).
-
-```
-Cell 1 (+) ──|>|── 1N5819 ──┐
-                            ├── FUSE 0.5 A ── VBAT
-Cell 2 (+) ──|>|── 1N5819 ──┘
-
-Cell 1 (−) ─────────────────┬── GND_RAW
-Cell 2 (−) ─────────────────┘
-```
-
-Diode **band (cathode) faces the fuse**, away from the cell. Wrong way round and nothing powers up.
+**GND_RAW and GND_SW never touch.**
 
 ---
 
-## 4. POWER PATH
+## 5. PART NUMBERING USED BELOW
 
-| From | To | Via |
-|---|---|---|
-| VBAT | Pro Mini **VCC** pin | direct |
-| VBAT | Ra-02 **3V3** (J1 pin 3) | direct |
-| VBAT | Ultrasonic **VCC** | direct |
-| VBAT | **VLATCH** | **1N5819**, band toward VLATCH |
-| VLATCH | 74HC74 pin 14 | direct |
-| VLATCH | reed pull-up path — see §5 | |
-| GND_RAW | Q1 **source** (middle pin, IRLZ44N) | short and thick |
-| GND_SW | Q1 **drain** (tab / left pin) | |
-| GND_RAW | 74HC74 pin 7 | |
-| GND_SW | Pro Mini **GND** | |
-| GND_SW | Ra-02 GND — **all four**: J1.1, J1.2, J2.1, J2.8 | HW-007 — not just one |
-| GND_SW | Ultrasonic GND, temp GND, flow GND, LED cathode | |
-
-**IRLZ44N pinout, facing the printed side, legs down:** left = **Gate**, middle = **Drain**, right = **Source**. The metal tab is Drain.
-Correction for wiring: **Gate ← R2**, **Drain → GND_SW**, **Source → GND_RAW**.
-
-### Capacitors
-
-| Value | Between | Where physically |
-|---|---|---|
-| 10 µF ceramic | VLATCH ↔ GND_RAW | at 74HC74 pins 14/7 |
-| 100 nF | VLATCH ↔ GND_RAW | at 74HC74 pins 14/7 |
-| 100 nF (C4) | VBAT ↔ GND_RAW | near the battery connector |
-| 100 nF (C5) | VBAT ↔ GND_SW | |
-| 100 nF | VBAT ↔ GND_SW | at the Pro Mini VCC/GND pins |
-| **100 µF ceramic + 10 µF + 100 nF** | VBAT ↔ GND_SW | **as close to the Ra-02 3V3 pin as you can get** |
-| 100 nF | VBAT ↔ GND_SW | at the ultrasonic connector |
-
-The radio's capacitors matter most. Short legs, right at the pin.
+| Ref | Value |
+|---|---|
+| R1 | 1 MΩ |
+| R2 | 1 kΩ |
+| R3 | 470 kΩ |
+| R5 | 1 kΩ |
+| R6 | 4.7 kΩ |
+| R7 | 100 kΩ |
+| R8–R13 | 100 Ω |
+| R14 | 330 Ω |
+| R15 | 1 MΩ |
+| R16 | 1 MΩ |
+| C1, C2, C4, C5, C11, C12, C13, C16, C17 | 100 nF |
+| C10, C14 | 10 µF |
+| C15 | 100 µF |
+| D1, D2, D3 | 1N5819 |
+| U1 | 74HC74 |
+| U2 | Pro Mini |
+| S1 | reed |
+| Q1 | IRLZ44N |
 
 ---
 
-## 5. POWER LATCH
-
-### 74HC74 — pin by pin
-
-| Pin | Name | Connect to |
-|---|---|---|
-| 1 | 1CLR | **R_por** to VLATCH, **C_por** to GND_RAW, **100 kΩ** to Pro Mini **A1** |
-| 2 | 1D | **pin 6** |
-| 3 | 1CLK | **REED_N** |
-| 4 | 1PRE | **VLATCH** |
-| 5 | 1Q | **R2 (1 kΩ)** → Q1 gate |
-| 6 | 1Q̄ | **pin 2** |
-| 7 | GND | GND_RAW |
-| 8 | 2Q̄ | *leave open* |
-| 9 | 2Q | *leave open* |
-| 10 | 2PRE | **VLATCH** |
-| 11 | 2CLK | **GND_RAW** |
-| 12 | 2D | **GND_RAW** |
-| 13 | 2CLR | **VLATCH** |
-| 14 | VCC | VLATCH |
-
-> Pins **4, 10, 13** go to **VLATCH**, not ground. They are active-LOW. Grounding them holds the chip in reset and nothing will ever switch on. This is the most common mistake when moving from the CD4013.
-
-**R_por / C_por:** either 1 MΩ + 100 nF, or the old R4 100 kΩ + 1 µF. Both give ~100 ms.
-
-### Reed network
-
-Same direction as your current build. Two component changes — see §0 for why.
+## 6. BATTERY PACK
 
 | From | To |
 |---|---|
-| **VLATCH** | reed switch → **100 Ω** → **REED_N** |
-| REED_N | **470 kΩ (R3)** → GND_RAW |
-| REED_N | **100 nF (C1)** → GND_RAW |
-| REED_N | **74HC74 pin 3** |
-| REED_N | **100 Ω** → Pro Mini **A0** (magnet sense) |
-
-**Changed from the old build:** R3 was 10 kΩ → now **470 kΩ**. The 100 Ω in series with the reed is new. C1 stays at **100 nF** (not 1 µF — the earlier draft called for 1 µF, that was for the withdrawn Schmitt version).
-
-**Q1 gate:** R1 1 MΩ from gate to GND_RAW. R2 1 kΩ from gate to 74HC74 pin 5.
-
-**Behaviour:** magnet near → reed closes → REED_N rises to VLATCH in ~10 µs → rising edge clocks the flip-flop → toggles. Contact bounce during the approach cannot produce a second edge, because the node only decays 1–2 % during a bounce-open. Magnet away → REED_N falls over ~47 ms → falling edge → ignored.
-
-**A0 reads HIGH when the magnet is present.** That gives firmware the magnet gesture for local unpair (HW-022) and the shutdown warning (HW-044).
+| Cell 1 + | D2 anode |
+| D2 cathode (band) | FUSE end A |
+| Cell 2 + | D3 anode |
+| D3 cathode (band) | FUSE end A |
+| FUSE end B | VBAT |
+| Cell 1 − | GND_RAW |
+| Cell 2 − | GND_RAW |
 
 ---
 
-## 6. RADIO — Ra-02
+## 7. POWER
 
-| Ra-02 pin | Pro Mini |
+| From | To |
 |---|---|
-| 3V3 (J1.3) | VBAT |
-| **GND — J1.1, J1.2, J2.1, J2.8** | **GND_SW — all four** |
-| RST (J1.4) | D9 |
-| DIO0 (J1.5) | D2 |
-| NSS (J2.2) | D10 |
-| MOSI (J2.3) | D11 |
-| MISO (J2.4) | D12 |
-| SCK (J2.5) | D13 |
+| VBAT | D1 anode |
+| D1 cathode (band) | VLATCH |
+| VLATCH | C10 (10 µF) → GND_RAW |
+| VLATCH | C11 (100 nF) → GND_RAW |
+| VBAT | C4 (100 nF) → GND_RAW |
+| VBAT | C5 (100 nF) → GND_SW |
 
-DIO1, DIO2, DIO3, DIO4, DIO5 — leave open.
+### Q1 IRLZ44N — label side facing you, legs down: **left = Gate, middle = Drain, right = Source**
+
+| From | To |
+|---|---|
+| Q1 Gate (left) | R2 (1 kΩ) → U1 pin 5 |
+| Q1 Gate (left) | R1 (1 MΩ) → GND_RAW |
+| Q1 Drain (middle + tab) | GND_SW |
+| Q1 Source (right) | GND_RAW |
 
 ---
 
-## 7. SENSORS
+## 8. U1 — 74HC74
 
-### Ultrasonic — RCWL-1670
+| Pin | To |
+|---|---|
+| 1 | R16 (1 MΩ) → VLATCH |
+| 1 | C2 (100 nF) → GND_RAW |
+| 1 | R7 (100 kΩ) → U2 A1 |
+| 2 | pin 6 |
+| 3 | REED_N |
+| 4 | **VLATCH** |
+| 5 | R2 (1 kΩ) → Q1 Gate |
+| 6 | pin 2 |
+| 7 | GND_RAW |
+| 8 | open |
+| 9 | open |
+| 10 | **VLATCH** |
+| 11 | GND_RAW |
+| 12 | GND_RAW |
+| 13 | **VLATCH** |
+| 14 | VLATCH |
 
-Module pads left to right are **GND, RX, TX, +5V**. RX is TRIG, TX is ECHO.
+Pins 4, 10, 13 → VLATCH. Not ground.
 
-| Module pad | Goes to |
+---
+
+## 9. REED
+
+| From | To |
+|---|---|
+| VLATCH | S1 leg 1 |
+| S1 leg 2 | R8 (100 Ω) → REED_N |
+| REED_N | R3 (470 kΩ) → GND_RAW |
+| REED_N | C1 (100 nF) → GND_RAW |
+| REED_N | U1 pin 3 |
+| REED_N | R9 (100 Ω) → U2 A0 |
+
+---
+
+## 10. U2 — ARDUINO PRO MINI
+
+| Pin | To |
+|---|---|
+| VCC | VBAT |
+| GND | GND_SW |
+| RAW | nothing |
+| D2 | J1 pin 5 |
+| D3 | TEMP_VCC |
+| D4 | R10 (100 Ω) → TEMP_BUS |
+| D5 | R11 (100 Ω) → FLOW_N |
+| D6 | R12 (100 Ω) → U_TRIG |
+| D7 | R5 (1 kΩ) → LED anode |
+| D8 | R13 (100 Ω) → U_ECHO |
+| D9 | J1 pin 4 |
+| D10 | J2 pin 2 |
+| D11 | J2 pin 3 |
+| D12 | J2 pin 4 |
+| D13 | J2 pin 5 |
+| A0 | R9 (100 Ω) → REED_N |
+| A1 | R7 (100 kΩ) → U1 pin 1 |
+| A2 | R14 (330 Ω) → FLOW_N |
+| A3–A7, D0, D1, RST, DTR | nothing |
+
+Plus: C12 (100 nF) across VCC ↔ GND_SW, at the pins.
+
+---
+
+## 11. Ra-02
+
+| Ra-02 pin | To |
+|---|---|
+| J1 pin 1 (GND) | GND_SW |
+| J1 pin 2 (GND) | GND_SW |
+| J1 pin 3 (3V3) | VBAT |
+| J1 pin 4 (RST) | U2 D9 |
+| J1 pin 5 (DIO0) | U2 D2 |
+| J1 pin 6, 7, 8 | open |
+| J2 pin 1 (GND) | GND_SW |
+| J2 pin 2 (NSS) | U2 D10 |
+| J2 pin 3 (MOSI) | U2 D11 |
+| J2 pin 4 (MISO) | U2 D12 |
+| J2 pin 5 (SCK) | U2 D13 |
+| J2 pin 6, 7 | open |
+| J2 pin 8 (GND) | GND_SW |
+
+At the J1 pin 3 / J2 pin 8 corner, as close as possible:
+
+| From | To |
+|---|---|
+| VBAT | C13 (100 nF) → GND_SW |
+| VBAT | C14 (10 µF) → GND_SW |
+| VBAT | C15 (100 µF) → GND_SW |
+
+---
+
+## 12. ULTRASONIC — RCWL-1670
+
+Module pads left → right: **GND, RX, TX, +5V**
+
+| Module pad | To |
 |---|---|
 | GND | GND_SW |
-| **RX (Trig)** | 100 Ω → Pro Mini **D6** |
-| **TX (Echo)** | 100 Ω → Pro Mini **D8** |
+| RX | U_TRIG |
+| TX | U_ECHO |
 | +5V | VBAT |
 
-> **Echo is on D8, not D7.** D8 is the hardware input-capture pin (HW-018). Wire it there.
-> **Watch the cable order.** The schematic's connector order does not match the module (HW-001). Wire by the function names above, ignore pin numbers.
+Plus: C16 (100 nF) VBAT ↔ GND_SW at the connector.
 
-### Temperature — two DS18B20 in parallel
+---
 
-Both sensors, wired identically:
-
-| Sensor wire | Goes to |
-|---|---|
-| Red (VDD) | Pro Mini **D3** |
-| Black/blue (GND) | GND_SW |
-| Yellow/white (DATA) | **TEMP_BUS** |
+## 13. TEMPERATURE — 2 × DS18B20 in parallel
 
 | From | To |
 |---|---|
-| TEMP_BUS | **4.7 kΩ (R6)** → D3 |
-| TEMP_BUS | 100 Ω → Pro Mini **D4** |
+| Sensor 1 red | TEMP_VCC |
+| Sensor 1 black | GND_SW |
+| Sensor 1 yellow | TEMP_BUS |
+| Sensor 2 red | TEMP_VCC |
+| Sensor 2 black | GND_SW |
+| Sensor 2 yellow | TEMP_BUS |
+| TEMP_BUS | R6 (4.7 kΩ) → TEMP_VCC |
 
-One sensor at the transducer, one on a longer lead reaching low into the tank headspace. **Verify each probe's wire colours with a multimeter before soldering** — clone probes are not consistent, and swapped VDD/DATA destroys the sensor.
+Check each probe's wire colours with a meter before soldering.
+Sensor 1 at the transducer. Sensor 2 on a longer lead, low in the tank headspace.
 
-### Flow — WY-90
+---
 
-| From | To |
-|---|---|
-| Flow switch, wire 1 | **FLOW_N** |
-| Flow switch, wire 2 | GND_SW |
-| FLOW_N | **1 MΩ** → VBAT |
-| FLOW_N | **100 nF** → GND_SW |
-| FLOW_N | 100 Ω → Pro Mini **D5** |
-| FLOW_N | **330 Ω** → Pro Mini **A2** |
-
-No polarity — either wire either way.
-**Install with the yellow arrow pointing downstream.** Backwards, it never closes, and the failure looks identical to "nobody used water."
-
-### Status LED
+## 14. FLOW — WY-90
 
 | From | To |
 |---|---|
-| Pro Mini **D7** | **1 kΩ** → LED anode |
+| Flow wire 1 | FLOW_N |
+| Flow wire 2 | GND_SW |
+| FLOW_N | R15 (1 MΩ) → VBAT |
+| FLOW_N | C17 (100 nF) → GND_SW |
+
+No polarity. Install with the yellow arrow pointing downstream.
+
+---
+
+## 15. LED
+
+| From | To |
+|---|---|
+| U2 D7 | R5 (1 kΩ) → LED anode |
 | LED cathode | GND_SW |
 
-Red or yellow. **Not blue** — it stops lighting near 3.0 V, exactly when you need to see it.
+---
+
+## 16. SOLDER ORDER
+
+1. Ground mesh (GND_SW only) — before any component
+2. Battery pack, test with meter alone
+3. VBAT, GND_RAW, GND_SW, Q1, D1, all capacitors
+4. U1 + reed network
+5. **Stop, run section 17**
+6. U2, then Ra-02, then sensor connectors
 
 ---
 
-## 8. FULL PRO MINI PIN MAP
-
-| Pin | Goes to | Via |
-|---|---|---|
-| VCC | VBAT | |
-| GND | GND_SW | |
-| RAW | **nothing** | regulator bypassed |
-| D2 | Ra-02 DIO0 | |
-| D3 | DS18B20 VDD (both) + 4.7 kΩ | |
-| D4 | TEMP_BUS | 100 Ω |
-| D5 | FLOW_N | 100 Ω |
-| D6 | Ultrasonic **Trig** | 100 Ω |
-| D7 | LED | 1 kΩ |
-| **D8** | Ultrasonic **Echo** | 100 Ω |
-| D9 | Ra-02 RST | |
-| D10 | Ra-02 NSS | |
-| D11 | Ra-02 MOSI | |
-| D12 | Ra-02 MISO | |
-| D13 | Ra-02 SCK | |
-| **A0** | REED_N (magnet sense) | 100 Ω |
-| **A1** | 74HC74 pin 1 (shutdown) | 100 kΩ |
-| **A2** | FLOW_N (wetting pulse) | 330 Ω |
-| A3–A7, D0, D1, RST | free | |
-
----
-
-## 9. BUILD ORDER
-
-1. **Ground mesh first** if you are doing one — before any component goes down. GND_SW only. Keep the latch corner (74HC74, reed, Q1, battery connector) as a separate island.
-2. Battery pack: diodes, fuse, connector. Test it on its own with a meter before it goes near the board.
-3. Power rails: VBAT, GND_RAW, GND_SW, Q1, VLATCH diode, all decoupling.
-4. Latch: 74HC74, reed network, POR.
-5. **Stop and test** — §10.
-6. Pro Mini, then the radio, then the sensor connectors.
-
----
-
-## 10. CHECKS BEFORE YOU CONNECT THE BATTERY
-
-Multimeter, no power. **Every one of these has to pass.**
+## 17. CHECKS — meter, no power
 
 | # | Measure | Must read |
 |---|---|---|
-| 1 | GND_RAW ↔ GND_SW | **OPEN.** Any continuity means you merged the two grounds — find it before powering up |
-| 2 | VBAT ↔ GND_RAW | Open, or a slow rise as caps charge. Never a dead short |
-| 3 | VBAT ↔ GND_SW | Same |
-| 4 | Battery pack output polarity | + on the pin you expect |
-| 5 | 74HC74 pin 14 to VLATCH, pin 7 to GND_RAW | continuity |
-| 6 | 74HC74 pins 4, 10, 13 → VLATCH | continuity. **Not ground** |
-| 7 | 74HC74 pins 11, 12 → GND_RAW | continuity |
-| 8 | REED_N → GND_RAW through R3 | **470 kΩ**, not 10 kΩ |
-| 9 | All four Ra-02 GND pads → GND_SW | continuity |
-| 10 | Pro Mini RAW pin | connected to nothing |
+| 1 | GND_RAW ↔ GND_SW | **OPEN** |
+| 2 | VBAT ↔ GND_RAW | no short |
+| 3 | VBAT ↔ GND_SW | no short |
+| 4 | Pack output polarity | + on expected pin |
+| 5 | U1 pin 14 ↔ VLATCH | continuity |
+| 6 | U1 pin 7 ↔ GND_RAW | continuity |
+| 7 | U1 pins 4, 10, 13 ↔ VLATCH | continuity |
+| 8 | U1 pins 11, 12 ↔ GND_RAW | continuity |
+| 9 | REED_N ↔ GND_RAW | 470 kΩ |
+| 10 | J1.1, J1.2, J2.1, J2.8 ↔ GND_SW | all four continuity |
+| 11 | U2 RAW pin | open |
 
-### First power-up
+## 18. FIRST POWER-UP
 
-1. If you have a bench supply, use it at 3.6 V with the current limit at **50 mA** before using cells.
-2. On connecting power the device should be **OFF** — the power-on reset holds it off. GND_SW should read close to VBAT, not 0 V.
-3. Touch the magnet to the reed. The device should switch **on**: GND_SW drops to near 0 V.
-4. Remove the magnet. It stays on.
-5. Touch again. It switches off.
-6. Repeat ten times. Every single approach should change the state exactly once.
+Bench supply 3.6 V, current limit 50 mA.
 
-If step 6 fails — a magnet approach that changes the state twice, or not at all — check R3 really is 470 kΩ and that the 100 Ω is in series with the reed. Those two values are what make the toggle deterministic.
-
----
-
-## 11. WHAT THIS BUILD DOES NOT FIX
-
-So you know what is still outstanding, and none of it is worth another rebuild:
-
-| Left open | Why it waits |
+| Step | Expect |
 |---|---|
-| Ground plane (HW-004) | Mesh on the prototype is a partial fix; the real one is the PCB |
-| SMD, MCU on board (HW-026) | PCB only |
-| TVS on the sensor lines (HW-012) | The 100 Ω resistors are the important half and they are in this build |
-| Q1 replacement (HW-017) | IRLZ44N works at 3.6 V, just uncharacterised. PCB |
-| Test points, ICSP (HW-029) | PCB |
-| Crystal vs resonator (HW-024) | Pro Mini is what it is |
+| 1. Connect power | Device OFF. GND_SW ≈ VBAT |
+| 2. Magnet to reed | Device ON. GND_SW ≈ 0 V |
+| 3. Remove magnet | Stays ON |
+| 4. Magnet again | OFF |
+| 5. Repeat ×10 | Exactly one state change per approach |
+
+If step 5 fails: confirm R3 = 470 kΩ and R8 = 100 Ω fitted.
 
 ---
 
-## 12. RECORD BEFORE YOU SEAL IT
+## 19. MEASURE BEFORE SEALING
 
-While the board is still open and easy to probe:
-
-- **Sleep current** on a bench supply — target ≤ 25 µA (HW-002)
-- **Magnet-held current** — expect ~7.7 µA. If you read ~360 µA, R3 is still the old 10 kΩ (HW-043)
-- **VBAT during a real transmission**, on cells left idle a week — must stay above 2.0 V at the 74HC74 (HW-042)
-- **Ultrasonic blind zone** — flat target, 2 cm outward in 5 mm steps (HW-051)
-- **Transducer spacing** with callipers (HW-052)
-
-Those five numbers close or escalate five open issues. Take them now; you will not want to open the enclosure again.
+| Measure | Expect |
+|---|---|
+| Sleep current | ≤ 25 µA |
+| Magnet held on reed | ~7.7 µA |
+| VBAT at U1 pin 14 during TX, week-old cells | > 2.0 V |
+| Ultrasonic blind zone — flat target, 2 cm out in 5 mm steps | record |
+| Transducer spacing, callipers | record |
