@@ -19,17 +19,31 @@ Work top to bottom. Every step connects to something already on the board.
 | Value | Type | Polarity |
 |---|---|---|
 | **100 nF** × 9 | **Ceramic.** Small blue or yellow disc, printed **104** | None. Either leg either way |
-| **10 µF** × 2 | Ceramic if you can get it. Otherwise electrolytic | Ceramic: none. **Electrolytic: yes** |
-| **100 µF** × 1 | Ceramic if you can get it. Otherwise electrolytic | Ceramic: none. **Electrolytic: yes** |
+| **10 µF** × 2 | Ceramic, aluminium electrolytic **or tantalum** — any is fine | **Yes**, unless it is ceramic |
+| **100 µF** × 1 | Ceramic, aluminium electrolytic **or tantalum** — any is fine | **Yes**, unless it is ceramic |
 
 **Reading the code on a ceramic disc:** the first 2 digits, then that many zeros, in picofarads.
 **104** = 10 + 4 zeros = 100000 pF = **100 nF** ← the one you already have
 **106** = 10 + 6 zeros = **10 µF**
 **107** = **100 µF**
 
-**Telling an electrolytic's legs apart:** the can has a **stripe** printed down one side with **−** marks on it. The leg on that side is **minus**. The other leg is **plus** and is usually **longer**.
+### Three kinds of capacitor, and the stripe means different things
 
-Electrolytic fitted backwards will fail, and can burst. If in doubt, check before soldering.
+| Looks like | Type | The stripe / bar marks |
+|---|---|---|
+| Small blue or yellow disc, two straight legs | **Ceramic** | no polarity at all |
+| Metal can, stripe down one side with **−** signs | **Aluminium electrolytic** | **MINUS** |
+| Yellow or orange block, bar across one end | **Tantalum** | **PLUS** |
+
+**The stripe means the opposite thing on tantalum.** Same marking, reversed meaning. Read the type first, then the stripe.
+
+**Other ways to tell plus from minus:**
+- On a **can**, the **longer** leg is plus (only on a new, uncut part).
+- On a **tantalum**, the bar end is plus. There is no other marking.
+
+Backwards fails in every case. A **tantalum fails short and can burn** — it is the one part here where getting it wrong does more than just not work.
+
+**Surface-mount parts** (a flat block with no legs, like most tantalums) need short wires soldered to each end before they can go on perfboard. If you have a through-hole part of the same value, use that instead.
 
 ---
 
@@ -132,11 +146,13 @@ Pins **1, 3, 5** stay empty for now. Other parts will be soldered onto them in l
 - **plain end** → **RED**
 - **striped end** → **GREEN**
 
-**4.2** — A **10 µF** capacitor.
-- **If ceramic** (small blob, no stripe): either leg either way.
-- **If electrolytic** (metal can, stripe down one side): **the striped leg is minus.**
-  - **plus leg (longer)** → **GREEN**
-  - **minus leg (striped side)** → **BLACK**
+**4.2** — A **10 µF** capacitor. **Plus goes to GREEN, minus goes to BLACK.**
+
+| If it is | Plus is |
+|---|---|
+| Ceramic (small blob, no stripe) | no polarity — either way round |
+| Aluminium electrolytic (metal can) | the leg **away** from the stripe |
+| Tantalum (yellow block) | the **bar** end |
 
 **4.3** — A **100 nF** capacitor.
 - one leg → **GREEN**
@@ -317,13 +333,11 @@ Now 3 capacitors. Cut their legs **as short as possible** so they sit right agai
 
 **13.7** — **100 nF**: one leg → J1 pin 3, other leg → J2 pin 8
 
-**13.8** — **10 µF**.
-- **If ceramic:** either leg either way.
-- **If electrolytic:** **plus leg (longer)** → J1 pin 3 · **minus leg (striped side)** → J2 pin 8
+**13.8** — **10 µF**. **Plus → J1 pin 3. Minus → J2 pin 8.**
 
-**13.9** — **100 µF**.
-- **If ceramic:** either leg either way.
-- **If electrolytic:** **plus leg (longer)** → J1 pin 3 · **minus leg (striped side)** → J2 pin 8
+**13.9** — **100 µF**. **Plus → J1 pin 3. Minus → J2 pin 8.**
+
+For both: ceramic has no polarity. On an **aluminium can** the stripe is **minus**. On a **tantalum block** the bar is **plus**. If it is surface-mount with no legs, solder a short wire to each end first.
 
 **13.10** — J1 pins 6, 7, 8 and J2 pins 6, 7 → nothing, ever.
 
