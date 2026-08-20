@@ -1,24 +1,42 @@
 # HYDRO NODE — COMPLETE BUILD SHEET
 Everything to add, remove, replace, and every wire. Final prototype build.
 
-**Read Section 0 before you pick up the soldering iron.** There is one part you may not have, and it changes what you build.
+**Read Section 0 before you pick up the soldering iron.** It changes two component values on the reed circuit compared to your current build.
 
 ---
 
-## 0. THE ONE DECISION — READ FIRST
+## 0. THE REED CIRCUIT — RESOLVED, NO EXTRA CHIP NEEDED
 
-The improved reed circuit needs a **Schmitt-trigger inverter**. Without it, the reed's slow edge feeds the flip-flop's clock input directly and the on/off toggle becomes unreliable.
+Earlier versions of this sheet asked whether you had a `74HC14` Schmitt inverter. **You do not need one.** A resistor value change achieves nearly the same result.
 
-**Do you have, or can you buy today, a `74HC14` (hex Schmitt inverter, DIP-14)?**
+> Note the part numbers are one digit apart and are completely different chips:
+> **74HC74** = dual D flip-flop — your power latch, U1. You have this.
+> **74HC14** = hex Schmitt inverter — the debounce buffer. Not required.
 
-| | Build |
-|---|---|
-| **YES** | **Circuit A** — the full improved latch. Fixes the double-toggle problem and drops magnet-held current from 360 µA to 3.6 µA. |
-| **NO** | **Circuit B** — keep the reed wired as it is now. Everything else on this sheet still applies. Issues HW-014 and HW-043 stay open and get fixed on the PCB. |
+**Keep the reed wired as it is now** (reed to VBAT, pull-down to ground), and make two changes:
 
-Circuit A is section 5A. Circuit B is section 5B. **Do one or the other, not both.**
+| Change | From | To |
+|---|---|---|
+| **R3 pull-down** | 10 kΩ | **470 kΩ** |
+| **Series resistor** | none | **100 Ω** between the reed and the node |
 
-Any hex Schmitt inverter in DIP works: `74HC14`, `74HCT14` (needs 4.5 V — **no**, do not use), `CD40106` (works, 3–18 V). **`74HC14` or `CD40106`.**
+### Why this works
+
+| | R3 = 10 kΩ | **R3 = 470 kΩ** |
+|---|---|---|
+| Magnet resting on the enclosure | 360 µA | **7.7 µA** — 47× better |
+| Node recovery time constant | 1 ms | **47 ms** |
+| 0.2 ms contact bounce → node falls | 18 % | **0.4 %** |
+| 0.5 ms contact bounce → node falls | **39 % — extra toggle likely** | **1.1 % — no extra edge** |
+| 1.0 ms contact bounce → node falls | **63 % — extra toggle** | **2.1 % — no extra edge** |
+
+The bounce problem disappears by the same mechanism a Schmitt trigger would use: during a bounce the node never falls far enough to produce a second edge. The **rising** edge on magnet approach — the one the flip-flop acts on — stays fast.
+
+The 100 Ω series resistor limits contact inrush into C1 and gives a **10 µs** attack, far faster than the clock input requires. Voltage error when closed: 0.8 mV.
+
+**Why not 1 MΩ?** The 74HC74's input leakage is ±1 µA worst case, which at 1 MΩ could lift the low level to 1.0 V. At 470 kΩ it is 0.47 V, against a spurious-toggle threshold of 2.52 V. 470 kΩ keeps real margin.
+
+Wiring is in **section 5**. There is only one circuit now — the old A/B split is gone.
 
 ---
 
@@ -43,32 +61,31 @@ Any hex Schmitt inverter in DIP works: `74HC14`, `74HCT14` (needs 4.5 V — **no
 
 | Qty | Part | For |
 |---|---|---|
-| 1 | **`74HC14`** or `CD40106` (DIP-14) | Reed Schmitt buffer — Circuit A only |
+| 1 | **470 kΩ resistor** | Reed pull-down — replaces R3 10 kΩ (§0) |
 | 3 | **`1N5819`** Schottky | 2 for cell isolation, 1 for the latch rail |
 | 1 | **0.5 A fuse** + holder | Battery pack protection |
 | 1 | **DS18B20** (second one) | Thermal gradient (HW-023) |
 | 1 | **Red or yellow LED** | Blue has no headroom at 3.0 V (HW-016) |
-| 2 | 1 MΩ resistor | Reed pull-up, flow pull-up |
-| 1 | 1 kΩ resistor | Reed series |
+| 1 | 1 MΩ resistor | Flow pull-up |
 | 1 | 1 kΩ resistor | LED series (replaces 330 Ω) |
 | 1 | 100 kΩ resistor | MCU shutdown line |
-| 5 | **100 Ω resistors** | Series protection on D4, D5, D6, D8, A0 |
+| 7 | **100 Ω resistors** | Series protection on D4, D5, D6, D8, A0, plus reed series and reed→A0 |
 | 1 | 330 Ω resistor | Flow wetting pulse |
-| 1 | 1 µF capacitor | Reed filter (replaces C1 100 nF) |
+| 1 | 1 µF capacitor | *Only if* you use the old R4 100 kΩ for the power-on reset — see below |
 | 1 | 10 µF ceramic | Latch rail hold-up |
 | 1 | 100 µF ceramic (or 47 µF) | Bulk near the radio (replaces C3) |
 | 5 | 100 nF ceramic | Decoupling |
 | 1 | 10 µF ceramic | Decoupling at the radio |
 
-**R4 100 kΩ** from the old build gets reused, but with a **1 µF** cap instead of 100 nF — see §5A. If you have a 1 MΩ spare, use that with the existing 100 nF instead. Either gives the same ~100 ms reset.
+**Power-on reset (R_por / C_por):** either a **1 MΩ + 100 nF**, or reuse the old **R4 100 kΩ with a 1 µF**. Both give ~100 ms. Use whichever pair you have.
 
 ### Do NOT fit
 
 | Part | Why |
 |---|---|
 | **CD4013BE** | Replaced by the 74HC74 — 2 V minimum instead of 3 V (HW-041) |
+| **R3, 10 kΩ** | Keep the position, fit **470 kΩ** instead (§0) |
 | **C3, 2200 µF electrolytic** | Leaks, poor cold ESR, and cannot buffer a transmit burst anyway (HW-009) |
-| **R3, 10 kΩ** | Circuit A only — superseded by the new reed network |
 | **Blue LED, R5 330 Ω** | Replaced by red + 1 kΩ |
 
 ---
@@ -82,7 +99,7 @@ Everything below refers to these names. Write them on masking tape and stick it 
 | **VBAT** | Battery positive, after the diodes and fuse |
 | **GND_RAW** | Battery negative |
 | **GND_SW** | Switched ground — the MOSFET drain. **Everything that turns off connects here** |
-| **VLATCH** | VBAT through a Schottky — powers the flip-flop and Schmitt buffer only |
+| **VLATCH** | VBAT through a Schottky — powers the 74HC74 and the reed pull-up only |
 | **REED_N** | The reed switch node |
 
 > ⚠️ **GND_RAW and GND_SW are two different rails.** They are separated by the MOSFET — that separation *is* the power switch. If you join them anywhere, the device can never turn off. This is the single easiest way to ruin the build.
@@ -115,10 +132,10 @@ Diode **band (cathode) faces the fuse**, away from the cell. Wrong way round and
 | VBAT | Ultrasonic **VCC** | direct |
 | VBAT | **VLATCH** | **1N5819**, band toward VLATCH |
 | VLATCH | 74HC74 pin 14 | direct |
-| VLATCH | 74HC14 pin 14 | direct (Circuit A) |
+| VLATCH | reed pull-up path — see §5 | |
 | GND_RAW | Q1 **source** (middle pin, IRLZ44N) | short and thick |
 | GND_SW | Q1 **drain** (tab / left pin) | |
-| GND_RAW | 74HC74 pin 7, 74HC14 pin 7 | |
+| GND_RAW | 74HC74 pin 7 | |
 | GND_SW | Pro Mini **GND** | |
 | GND_SW | Ra-02 GND — **all four**: J1.1, J1.2, J2.1, J2.8 | HW-007 — not just one |
 | GND_SW | Ultrasonic GND, temp GND, flow GND, LED cathode | |
@@ -132,7 +149,6 @@ Correction for wiring: **Gate ← R2**, **Drain → GND_SW**, **Source → GND_R
 |---|---|---|
 | 10 µF ceramic | VLATCH ↔ GND_RAW | at 74HC74 pins 14/7 |
 | 100 nF | VLATCH ↔ GND_RAW | at 74HC74 pins 14/7 |
-| 100 nF | VLATCH ↔ GND_RAW | at 74HC14 pins 14/7 |
 | 100 nF (C4) | VBAT ↔ GND_RAW | near the battery connector |
 | 100 nF (C5) | VBAT ↔ GND_SW | |
 | 100 nF | VBAT ↔ GND_SW | at the Pro Mini VCC/GND pins |
@@ -143,7 +159,7 @@ The radio's capacitors matter most. Short legs, right at the pin.
 
 ---
 
-## 5A. POWER LATCH — CIRCUIT A (with 74HC14)
+## 5. POWER LATCH
 
 ### 74HC74 — pin by pin
 
@@ -151,7 +167,7 @@ The radio's capacitors matter most. Short legs, right at the pin.
 |---|---|---|
 | 1 | 1CLR | **R_por** to VLATCH, **C_por** to GND_RAW, **100 kΩ** to Pro Mini **A1** |
 | 2 | 1D | **pin 6** |
-| 3 | 1CLK | **74HC14 pin 2** |
+| 3 | 1CLK | **REED_N** |
 | 4 | 1PRE | **VLATCH** |
 | 5 | 1Q | **R2 (1 kΩ)** → Q1 gate |
 | 6 | 1Q̄ | **pin 2** |
@@ -170,35 +186,23 @@ The radio's capacitors matter most. Short legs, right at the pin.
 
 ### Reed network
 
+Same direction as your current build. Two component changes — see §0 for why.
+
 | From | To |
 |---|---|
-| VLATCH | **1 MΩ** → **REED_N** |
-| REED_N | **1 µF** → GND_RAW |
-| REED_N | reed switch → **1 kΩ** → GND_RAW |
-| REED_N | **74HC14 pin 1** |
-| 74HC14 **pin 2** | 74HC74 pin 3, **and** 100 Ω → Pro Mini **A0** |
+| **VLATCH** | reed switch → **100 Ω** → **REED_N** |
+| REED_N | **470 kΩ (R3)** → GND_RAW |
+| REED_N | **100 nF (C1)** → GND_RAW |
+| REED_N | **74HC74 pin 3** |
+| REED_N | **100 Ω** → Pro Mini **A0** (magnet sense) |
 
-**74HC14 unused inputs — pins 3, 5, 9, 11, 13 → GND_RAW.** Do not leave them floating; floating CMOS inputs draw current continuously and will wreck the sleep budget. Unused outputs (4, 6, 8, 10, 12) stay open.
+**Changed from the old build:** R3 was 10 kΩ → now **470 kΩ**. The 100 Ω in series with the reed is new. C1 stays at **100 nF** (not 1 µF — the earlier draft called for 1 µF, that was for the withdrawn Schmitt version).
 
 **Q1 gate:** R1 1 MΩ from gate to GND_RAW. R2 1 kΩ from gate to 74HC74 pin 5.
 
-**Behaviour:** magnet near → reed closes → REED_N goes low → inverter output goes high → rising edge clocks the flip-flop → toggles. Magnet away → REED_N rises slowly over ~1 s → falling edge → ignored. Bounce during the approach is swallowed by the 1 s recovery.
+**Behaviour:** magnet near → reed closes → REED_N rises to VLATCH in ~10 µs → rising edge clocks the flip-flop → toggles. Contact bounce during the approach cannot produce a second edge, because the node only decays 1–2 % during a bounce-open. Magnet away → REED_N falls over ~47 ms → falling edge → ignored.
 
----
-
-## 5B. POWER LATCH — CIRCUIT B (no 74HC14)
-
-Keep the reed exactly as it is now: **reed between VBAT and REED_N**, **10 kΩ (R3) from REED_N to GND_RAW**, **100 nF from REED_N to GND_RAW**.
-
-74HC74 wiring is identical to §5A **except**:
-
-| Pin | Connect to |
-|---|---|
-| 3 (1CLK) | **REED_N directly** (no buffer) |
-
-No A0 sense line in this version.
-
-Accepted for now: bounce can produce a double-toggle, and a magnet resting on the enclosure draws ~360 µA. Both get fixed on the PCB.
+**A0 reads HIGH when the magnet is present.** That gives firmware the magnet gesture for local unpair (HW-022) and the shutdown warning (HW-044).
 
 ---
 
@@ -296,7 +300,7 @@ Red or yellow. **Not blue** — it stops lighting near 3.0 V, exactly when you n
 | D11 | Ra-02 MOSI | |
 | D12 | Ra-02 MISO | |
 | D13 | Ra-02 SCK | |
-| **A0** | 74HC14 pin 2 (magnet sense) | 100 Ω — Circuit A only |
+| **A0** | REED_N (magnet sense) | 100 Ω |
 | **A1** | 74HC74 pin 1 (shutdown) | 100 kΩ |
 | **A2** | FLOW_N (wetting pulse) | 330 Ω |
 | A3–A7, D0, D1, RST | free | |
@@ -305,10 +309,10 @@ Red or yellow. **Not blue** — it stops lighting near 3.0 V, exactly when you n
 
 ## 9. BUILD ORDER
 
-1. **Ground mesh first** if you are doing one — before any component goes down. GND_SW only. Keep the latch corner (74HC74, 74HC14, reed, Q1, battery connector) as a separate island.
+1. **Ground mesh first** if you are doing one — before any component goes down. GND_SW only. Keep the latch corner (74HC74, reed, Q1, battery connector) as a separate island.
 2. Battery pack: diodes, fuse, connector. Test it on its own with a meter before it goes near the board.
 3. Power rails: VBAT, GND_RAW, GND_SW, Q1, VLATCH diode, all decoupling.
-4. Latch: 74HC74, 74HC14, reed network, POR.
+4. Latch: 74HC74, reed network, POR.
 5. **Stop and test** — §10.
 6. Pro Mini, then the radio, then the sensor connectors.
 
@@ -327,7 +331,7 @@ Multimeter, no power. **Every one of these has to pass.**
 | 5 | 74HC74 pin 14 to VLATCH, pin 7 to GND_RAW | continuity |
 | 6 | 74HC74 pins 4, 10, 13 → VLATCH | continuity. **Not ground** |
 | 7 | 74HC74 pins 11, 12 → GND_RAW | continuity |
-| 8 | 74HC14 pins 3, 5, 9, 11, 13 → GND_RAW | continuity (Circuit A) |
+| 8 | REED_N → GND_RAW through R3 | **470 kΩ**, not 10 kΩ |
 | 9 | All four Ra-02 GND pads → GND_SW | continuity |
 | 10 | Pro Mini RAW pin | connected to nothing |
 
@@ -340,7 +344,7 @@ Multimeter, no power. **Every one of these has to pass.**
 5. Touch again. It switches off.
 6. Repeat ten times. Every single approach should change the state exactly once.
 
-If step 6 fails on Circuit B, that is the known bounce problem and it is expected — note it and carry on.
+If step 6 fails — a magnet approach that changes the state twice, or not at all — check R3 really is 470 kΩ and that the 100 Ω is in series with the reed. Those two values are what make the toggle deterministic.
 
 ---
 
@@ -364,7 +368,7 @@ So you know what is still outstanding, and none of it is worth another rebuild:
 While the board is still open and easy to probe:
 
 - **Sleep current** on a bench supply — target ≤ 25 µA (HW-002)
-- **Magnet-held current** — ~3.6 µA on Circuit A, ~360 µA on Circuit B (HW-043)
+- **Magnet-held current** — expect ~7.7 µA. If you read ~360 µA, R3 is still the old 10 kΩ (HW-043)
 - **VBAT during a real transmission**, on cells left idle a week — must stay above 2.0 V at the 74HC74 (HW-042)
 - **Ultrasonic blind zone** — flat target, 2 cm outward in 5 mm steps (HW-051)
 - **Transducer spacing** with callipers (HW-052)
