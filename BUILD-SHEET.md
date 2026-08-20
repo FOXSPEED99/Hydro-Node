@@ -1,286 +1,300 @@
 # HYDRO NODE — BUILD SHEET
 
-Work top to bottom. Every step connects only to something already on the board. Nothing is left loose to come back to.
+Work top to bottom. Every step connects to something already on the board.
 
 ---
 
 ## PARTS
 
-### Remove — do not fit
-CD4013BE · C3 2200 µF electrolytic · blue LED · the 220 Ω / 330 Ω LED resistor · the 10 kΩ
+**Do not fit:** CD4013BE · the 2200 µF electrolytic · the blue LED · the 220 Ω / 330 Ω LED resistor · the 10 kΩ
 
-### Reuse
-Pro Mini 3.3 V (LED + regulator already removed) · Ra-02 · reed switch · IRLZ44N · 1 MΩ · 1 kΩ · 4.7 kΩ · 100 kΩ · 4 × 100 nF · JST connectors · RCWL-1670 · WY-90 · DS18B20 · 2 × LS14500
+**Reuse:** Pro Mini 3.3 V (LED + regulator already removed) · Ra-02 · reed switch · IRLZ44N · 1 MΩ · 1 kΩ · 4.7 kΩ · 100 kΩ · 4 × 100 nF · JST connectors · RCWL-1670 · WY-90 · DS18B20 · 2 × LS14500
 
-### Buy
-3 × 1N5819 · 0.5 A fuse + holder · 1 × DS18B20 · 1 red LED · 1 × 470 kΩ · 2 × 1 MΩ · 1 × 1 kΩ · 6 × 100 Ω · 1 × 330 Ω · 5 × 100 nF · 2 × 10 µF · 1 × 100 µF
+**Buy:** 3 × 1N5819 · 0.5 A fuse + holder · 1 × DS18B20 · 1 red LED · 1 × 470 kΩ · 2 × 1 MΩ · 1 × 1 kΩ · 6 × 100 Ω · 1 × 330 Ω · 5 × 100 nF · 2 × 10 µF · 1 × 100 µF
+
+**Also get:** wire in **4 colours** — red, black, blue, green.
+
+---
+
+## THE 4 WIRES
+
+You will run 4 wires across the board first. Everything else solders onto one of them.
+
+| Wire | What it is |
+|---|---|
+| **RED** | battery plus. Powers the Pro Mini, the radio, the ultrasonic |
+| **BLACK** | battery minus |
+| **BLUE** | the ground that switches off. When the device is off, BLUE is disconnected from BLACK |
+| **GREEN** | a small power wire. Only the 74HC74 and the reed use it |
+
+**RED, BLACK, BLUE, GREEN.** That is all the naming in this document. Everything else is a component leg.
+
+> **BLACK and BLUE must never touch each other.** That is what makes the on/off switch work.
 
 ---
 
 # STAGE 1 — BATTERY PACK
 
-Build this off the board. Nothing else exists yet.
+Off the board. Nothing else exists yet.
 
-**1.1** — Take a **1N5819**. One end has a **stripe**.
-- plain end → **Cell 1 positive**
-- striped end → **fuse leg 1**
+**1.1** — Take a **1N5819** diode. One end has a **stripe** painted on it.
+- the **plain end** → solder to **Cell 1 plus**
+- the **striped end** → solder to **one leg of the fuse**
 
-**1.2** — Take the second **1N5819**.
-- plain end → **Cell 2 positive**
-- striped end → **fuse leg 1** — the same blob as 1.1
+**1.2** — Take the **second 1N5819**.
+- the **plain end** → solder to **Cell 2 plus**
+- the **striped end** → solder to **that same fuse leg** — the same solder blob as 1.1
 
-**1.3** — Join **Cell 1 negative** and **Cell 2 negative** together. Solder a **black wire** to that blob.
+**1.3** — Twist **Cell 1 minus** and **Cell 2 minus** together and solder. Solder a **BLACK wire** onto that joint.
 
-**1.4** — Solder a **red wire** to **fuse leg 2**.
+**1.4** — Solder a **RED wire** onto **the fuse's other leg**.
 
-**TEST NOW:** meter across red and black. Should read about **3.6 V**, red positive. If it reads 0, a diode is backwards.
+**TEST:** meter across the red and black wires. About **3.6 V**, red is plus.
+Reads 0 V? A diode is in backwards.
 
 Put the pack aside.
 
 ---
 
-# STAGE 2 — RAILS AND HOLES
+# STAGE 2 — RUN THE 4 WIRES
 
-**2.1** — Run **4 bare wires** across the board. Label each with tape.
+Cut 4 lengths of wire and solder each one across the board, along a row of holes. Solder it into every 4th or 5th hole so it stays put.
 
-| Rail | Where it goes |
-|---|---|
-| **RAIL-BAT+** | one long edge |
-| **RAIL-BAT−** | next to it |
-| **RAIL-SW** | the opposite edge |
-| **RAIL-LATCH** | short, near where the 74HC74 will sit |
+**2.1** — **RED wire** along one long edge.
 
-**RAIL-BAT− and RAIL-SW must never touch.**
+**2.2** — **BLACK wire** next to it.
 
-**2.2** — Pick **5 empty holes** and mark them with a pen: **H1, H2, H3, H4, H5**.
+**2.3** — **BLUE wire** along the opposite edge.
 
-Each will end up with this many legs. Count them at the end:
+**2.4** — **GREEN wire**, short, wherever you plan to put the 74HC74 chip.
 
-| Hole | Final leg count | Put it near |
-|---|---|---|
-| H1 | 3 | the MOSFET |
-| H2 | 4 | the 74HC74 |
-| H3 | 5 | the reed switch |
-| H4 | 3 | the temperature connector |
-| H5 | 5 | the flow connector |
+Leave one end of the RED and BLACK wires free — the battery pack plugs in there later.
+
+Check with a meter: **no beep** between any two of the four wires.
 
 ---
 
 # STAGE 3 — 74HC74 CHIP
 
-**3.1** — Place the chip. It has a **notch at one end**. With the notch at the top, **pin 1 is top-left**, and pins count **down the left side** (1–7), then **up the right side** (8–14).
+**3.1** — Place the chip on the board and solder its legs down.
 
-Now every pin, one at a time:
+The chip has a **notch** at one end. Turn it so the notch is at the top.
+**Pin 1 is the top-left leg.** Count **down the left side**: 1, 2, 3, 4, 5, 6, 7.
+Then jump to the **bottom-right leg**, which is pin 8, and count **up the right side**: 8, 9, 10, 11, 12, 13, 14.
+So **pin 14 is top-right**.
 
-| Step | Pin | Solder it to |
-|---|---|---|
-| 3.2 | pin 14 | **RAIL-LATCH** |
-| 3.3 | pin 7 | **RAIL-BAT−** |
-| 3.4 | pin 4 | **RAIL-LATCH** |
-| 3.5 | pin 10 | **RAIL-LATCH** |
-| 3.6 | pin 13 | **RAIL-LATCH** |
-| 3.7 | pin 11 | **RAIL-BAT−** |
-| 3.8 | pin 12 | **RAIL-BAT−** |
-| 3.9 | pin 2 | **pin 6** — a short wire across the chip |
-| 3.10 | pin 3 | **H3** |
-| 3.11 | pin 1 | **H2** |
-| 3.12 | pins 8 and 9 | leave empty |
-| 3.13 | pin 5 | leave for now — stage 5 brings a wire to it |
+Now, one leg at a time:
 
-Pins **4, 10, 13** go to **RAIL-LATCH**. Not to ground. Check this before moving on.
+**3.2** — pin 14 → **GREEN**
 
-> **H2 now has 1 leg** (pin 1). **H3 now has 1 leg** (pin 3).
+**3.3** — pin 7 → **BLACK**
+
+**3.4** — pin 4 → **GREEN**
+
+**3.5** — pin 10 → **GREEN**
+
+**3.6** — pin 13 → **GREEN**
+
+**3.7** — pin 11 → **BLACK**
+
+**3.8** — pin 12 → **BLACK**
+
+**3.9** — pin 2 → **pin 6**. A short wire from one side of the chip to the other.
+
+**3.10** — pins 8 and 9 → nothing. Leave them.
+
+Pins **4, 10, 13** go to **GREEN**. Not to BLACK. Check this now.
+
+Pins **1, 3, 5** stay empty for now. Other parts will be soldered onto them in later stages.
 
 ---
 
-# STAGE 4 — POWER FOR THE LATCH
+# STAGE 4 — POWER FOR THE CHIP
 
-**4.1** — Third **1N5819**.
-- plain end → **RAIL-BAT+**
-- striped end → **RAIL-LATCH**
+**4.1** — The **third 1N5819** diode.
+- **plain end** → **RED**
+- **striped end** → **GREEN**
 
-**4.2** — **10 µF ceramic**. No polarity.
-- one leg → **RAIL-LATCH**
-- other leg → **RAIL-BAT−**
+**4.2** — A **10 µF** capacitor. It has 2 legs and no plus or minus.
+- one leg → **GREEN**
+- other leg → **BLACK**
 
-**4.3** — **100 nF**.
-- one leg → **RAIL-LATCH**
-- other leg → **RAIL-BAT−**
+**4.3** — A **100 nF** capacitor.
+- one leg → **GREEN**
+- other leg → **BLACK**
 
 ---
 
 # STAGE 5 — MOSFET
 
-**5.1** — **IRLZ44N**. Hold it with the **printed face toward you** and the **legs pointing down**.
+**5.1** — Take the **IRLZ44N**. Hold it with the **printed face toward you** and the **legs pointing down**.
+
 - **left leg** = gate
-- **middle leg** = drain — also connected to the metal tab
+- **middle leg** = drain. The metal tab at the back is also the drain
 - **right leg** = source
 
-**5.2** — **middle leg** → **RAIL-SW**
+Solder it to the board.
 
-**5.3** — **right leg** → **RAIL-BAT−**
+**5.2** — **middle leg** → **BLUE**
 
-**5.4** — **left leg** → **H1**
+**5.3** — **right leg** → **BLACK**
 
-**5.5** — **1 MΩ**.
-- one leg → **H1**
-- other leg → **RAIL-BAT−**
+**5.4** — A **1 MΩ** resistor.
+- one leg → **the MOSFET's left leg**
+- other leg → **BLACK**
 
-**5.6** — **1 kΩ**.
-- one leg → **H1**
+**5.5** — A **1 kΩ** resistor.
+- one leg → **the MOSFET's left leg**
 - other leg → **74HC74 pin 5**
 
-> **H1 is now finished — 3 legs.** Count them: MOSFET left leg, 1 MΩ, 1 kΩ.
+> The MOSFET's **left leg** now has 3 things on it: the resistor from 5.4, the resistor from 5.5, and the MOSFET leg itself.
 
 ---
 
-# STAGE 6 — RESET PARTS
+# STAGE 6 — TWO PARTS ONTO PIN 1
 
-**6.1** — **1 MΩ**.
-- one leg → **H2**
-- other leg → **RAIL-LATCH**
+**6.1** — A **1 MΩ** resistor.
+- one leg → **74HC74 pin 1**
+- other leg → **GREEN**
 
-**6.2** — **100 nF**.
-- one leg → **H2**
-- other leg → **RAIL-BAT−**
+**6.2** — A **100 nF** capacitor.
+- one leg → **74HC74 pin 1**
+- other leg → **BLACK**
 
-> **H2 now has 3 legs.** One more arrives in stage 14.
+> **Pin 1** now has 2 things on it. One more comes in stage 14.
 
 ---
 
 # STAGE 7 — REED SWITCH
 
-**7.1** — reed **leg 1** → **RAIL-LATCH**
+**7.1** — reed **leg 1** → **GREEN**
 
-**7.2** — **100 Ω**.
-- one leg → reed **leg 2**
-- other leg → **H3**
+**7.2** — A **100 Ω** resistor.
+- one leg → **reed leg 2**
+- other leg → **74HC74 pin 3**
 
-**7.3** — **470 kΩ**.
-- one leg → **H3**
-- other leg → **RAIL-BAT−**
+**7.3** — A **470 kΩ** resistor.
+- one leg → **74HC74 pin 3**
+- other leg → **BLACK**
 
-**7.4** — **100 nF**.
-- one leg → **H3**
-- other leg → **RAIL-BAT−**
+**7.4** — A **100 nF** capacitor.
+- one leg → **74HC74 pin 3**
+- other leg → **BLACK**
 
-> **H3 now has 4 legs.** One more arrives in stage 14.
+> **Pin 3** now has 3 things on it. One more comes in stage 14.
 
 ---
 
-# STAGE 8 — TEST 1: does the power switch work?
+# STAGE 8 — TEST: does the on/off switch work?
 
-Nothing else is on the board yet. This tests the latch on its own.
+Only the battery, the chip, the MOSFET and the reed are on the board. Test them before adding anything else.
 
-**Meter first, no power:**
+**Meter, no power connected:**
 
-| Probes on | Must read |
+| Touch probes to | Should |
 |---|---|
-| RAIL-BAT− and RAIL-SW | **no beep** |
-| RAIL-BAT+ and RAIL-BAT− | no beep |
-| 74HC74 pin 4 and RAIL-LATCH | beep |
-| 74HC74 pin 10 and RAIL-LATCH | beep |
-| 74HC74 pin 13 and RAIL-LATCH | beep |
-| H3 and RAIL-BAT− | 470 kΩ |
+| BLACK and BLUE | **not beep** |
+| RED and BLACK | not beep |
+| 74HC74 pin 4 and GREEN | beep |
+| 74HC74 pin 10 and GREEN | beep |
+| 74HC74 pin 13 and GREEN | beep |
 
-**Then power.** Bench supply 3.6 V, limit 50 mA — or the battery pack from stage 1.
-Red to **RAIL-BAT+**, black to **RAIL-BAT−**.
+**Now connect power.** Battery pack from stage 1, or a bench supply at 3.6 V with the limit set to 50 mA.
+Red wire to **RED**, black wire to **BLACK**.
 
-| Do this | Should happen |
+Put the meter's black probe on **BLACK** and the red probe on **BLUE**. Watch that reading.
+
+| Do this | Meter should show |
 |---|---|
-| Connect power | **RAIL-SW reads ≈ 3.6 V** (device off) |
-| Magnet near the reed | **RAIL-SW drops to ≈ 0 V** (device on) |
+| Connect the power | **about 3.6 V** — device off |
+| Bring the magnet to the reed | **about 0 V** — device on |
 | Take the magnet away | stays at 0 V |
-| Magnet near again | back to ≈ 3.6 V |
-| Repeat 10 times | one change per approach, every time |
+| Bring the magnet again | back to about 3.6 V |
+| Repeat 10 times | changes once every time |
 
-**Do not carry on until this passes.** Everything after this depends on it.
+**Do not go further until this works.** Everything after depends on it.
 
-Disconnect power.
-
----
-
-# STAGE 9 — TWO RAIL CAPACITORS
-
-**9.1** — **100 nF**: one leg → **RAIL-BAT+**, other leg → **RAIL-BAT−**
-
-**9.2** — **100 nF**: one leg → **RAIL-BAT+**, other leg → **RAIL-SW**
+Disconnect the power.
 
 ---
 
-# STAGE 10 — ULTRASONIC CONNECTOR (4-pin)
+# STAGE 9 — TWO CAPACITORS
 
-The RCWL-1670 module's pads read left to right: **GND, RX, TX, +5V**.
-Decide now which connector pin carries which, and write it on tape. Below they are called by function.
+**9.1** — **100 nF**: one leg → **RED**, other leg → **BLACK**
 
-**10.1** — Place the 4-pin connector.
+**9.2** — **100 nF**: one leg → **RED**, other leg → **BLUE**
 
-**10.2** — the **+5V** pin → **RAIL-BAT+**
+---
 
-**10.3** — the **GND** pin → **RAIL-SW**
+# STAGE 10 — ULTRASONIC CONNECTOR
+
+The RCWL-1670 module has 4 pads. Left to right they are printed: **GND, RX, TX, +5V**.
+
+**10.1** — Solder the 4-pin connector to the board. Put a piece of tape next to it and write **GND · RX · TX · +5V** so you know which pin is which.
+
+**10.2** — the **+5V** pin → **RED**
+
+**10.3** — the **GND** pin → **BLUE**
 
 **10.4** — **100 nF**: one leg → the **+5V** pin, other leg → the **GND** pin
 
-> The **RX** and **TX** pins stay empty. Stage 14 brings wires to them.
+> The **RX** and **TX** pins stay empty. Stage 14 fills them.
 
 ---
 
-# STAGE 11 — TEMPERATURE CONNECTOR (3-pin)
+# STAGE 11 — TEMPERATURE CONNECTOR
 
-Three pins: **VCC**, **GND**, **DATA**. Write them on tape.
+**11.1** — Solder the 3-pin connector. Write on tape: **VCC · GND · DATA**.
 
-**11.1** — Place the 3-pin connector.
+**11.2** — the **GND** pin → **BLUE**
 
-**11.2** — the **GND** pin → **RAIL-SW**
-
-**11.3** — the **DATA** pin → **H4**
-
-**11.4** — **4.7 kΩ**.
-- one leg → **H4**
+**11.3** — A **4.7 kΩ** resistor.
+- one leg → the **DATA** pin
 - other leg → the **VCC** pin
 
-> **H4 now has 2 legs.** One more in stage 14. The **VCC** pin stays otherwise empty until stage 14.
+> The **DATA** pin has 1 thing on it. One more comes in stage 14.
+> The **VCC** pin has 1 thing on it. One more comes in stage 14.
 
 ---
 
-# STAGE 12 — FLOW CONNECTOR (2-pin)
+# STAGE 12 — FLOW CONNECTOR
 
-**12.1** — Place the 2-pin connector. Call the pins **A** and **B**.
+**12.1** — Solder the 2-pin connector. Write on tape: **A · B**.
 
-**12.2** — pin **B** → **RAIL-SW**
+**12.2** — pin **B** → **BLUE**
 
-**12.3** — pin **A** → **H5**
+**12.3** — A **1 MΩ** resistor.
+- one leg → pin **A**
+- other leg → **RED**
 
-**12.4** — **1 MΩ**.
-- one leg → **H5**
-- other leg → **RAIL-BAT+**
+**12.4** — A **100 nF** capacitor.
+- one leg → pin **A**
+- other leg → **BLUE**
 
-**12.5** — **100 nF**.
-- one leg → **H5**
-- other leg → **RAIL-SW**
-
-> **H5 now has 3 legs.** Two more in stage 14.
+> Pin **A** now has 2 things on it. Two more come in stage 14.
 
 ---
 
-# STAGE 13 — RADIO HEADERS
+# STAGE 13 — RADIO SOCKETS
 
-**13.1** — Place the two 8-pin sockets for the Ra-02.
-**J1** is the row with **3V3** on it. **J2** is the row with **NSS, MOSI, MISO, SCK**.
+**13.1** — Solder the two 8-pin sockets that the Ra-02 plugs into.
 
-**13.2** — J1 **pin 1** (GND) → **RAIL-SW**
+**J1** is the row printed with **3V3**.
+**J2** is the row printed with **NSS, MOSI, MISO, SCK**.
 
-**13.3** — J1 **pin 2** (GND) → **RAIL-SW**
+**13.2** — J1 **pin 1** (GND) → **BLUE**
 
-**13.4** — J2 **pin 1** (GND) → **RAIL-SW**
+**13.3** — J1 **pin 2** (GND) → **BLUE**
 
-**13.5** — J2 **pin 8** (GND) → **RAIL-SW**
+**13.4** — J2 **pin 1** (GND) → **BLUE**
 
-Four separate wires. Not one shared.
+**13.5** — J2 **pin 8** (GND) → **BLUE**
 
-**13.6** — J1 **pin 3** (3V3) → **RAIL-BAT+**
+Four separate wires, one per pin. Do not join them together first.
 
-Now three capacitors, legs cut **as short as you can**, sitting right against the socket:
+**13.6** — J1 **pin 3** (3V3) → **RED**
+
+Now 3 capacitors. Cut their legs **as short as possible** so they sit right against the socket.
 
 **13.7** — **100 nF**: one leg → J1 pin 3, other leg → J2 pin 8
 
@@ -288,7 +302,7 @@ Now three capacitors, legs cut **as short as you can**, sitting right against th
 
 **13.9** — **100 µF**: one leg → J1 pin 3, other leg → J2 pin 8
 
-**13.10** — J1 pins **6, 7, 8** and J2 pins **6, 7** stay empty, permanently.
+**13.10** — J1 pins 6, 7, 8 and J2 pins 6, 7 → nothing, ever.
 
 > J1 pins 4 and 5, and J2 pins 2, 3, 4, 5 stay empty until stage 14.
 
@@ -296,49 +310,52 @@ Now three capacitors, legs cut **as short as you can**, sitting right against th
 
 # STAGE 14 — PRO MINI
 
-Everything this stage connects to is already on the board.
+Everything in this stage connects to something already fitted.
 
-**14.1** — Place the Pro Mini.
+**14.1** — Solder the Pro Mini onto the board.
 
 ### Power
 
-**14.2** — **VCC** → **RAIL-BAT+**
+**14.2** — **VCC** → **RED**
 
-**14.3** — **GND** → **RAIL-SW**
+**14.3** — **GND** → **BLUE**
 
 **14.4** — **100 nF**: one leg → the **VCC** pin, other leg → the **GND** pin
 
-**14.5** — **RAW** stays empty, permanently.
+**14.5** — **RAW** → nothing, ever.
 
-### To the holes
+### Onto the 74HC74
 
-**14.6** — **100 Ω**: one leg → **A0**, other leg → **H3**
-> **H3 is now finished — 5 legs.**
+**14.6** — **100 Ω**: one leg → **A0**, other leg → **74HC74 pin 3**
+> Pin 3 is now finished — 4 things on it.
 
-**14.7** — **100 kΩ**: one leg → **A1**, other leg → **H2**
-> **H2 is now finished — 4 legs.**
+**14.7** — **100 kΩ**: one leg → **A1**, other leg → **74HC74 pin 1**
+> Pin 1 is now finished — 3 things on it.
 
-**14.8** — **330 Ω**: one leg → **A2**, other leg → **H5**
+### Onto the flow connector
 
-**14.9** — **100 Ω**: one leg → **D4**, other leg → **H4**
-> **H4 is now finished — 3 legs.**
+**14.8** — **330 Ω**: one leg → **A2**, other leg → flow connector pin **A**
 
-**14.10** — **100 Ω**: one leg → **D5**, other leg → **H5**
-> **H5 is now finished — 5 legs.**
+**14.9** — **100 Ω**: one leg → **D5**, other leg → flow connector pin **A**
+> Flow pin A is now finished — 4 things on it.
 
-### To the ultrasonic connector
+### Onto the temperature connector
 
-**14.11** — **100 Ω**: one leg → **D6**, other leg → the **RX** pin
+**14.10** — **D3** → the temperature connector's **VCC** pin
+> VCC pin finished — 2 things on it.
 
-**14.12** — **100 Ω**: one leg → **D8**, other leg → the **TX** pin
+**14.11** — **100 Ω**: one leg → **D4**, other leg → the **DATA** pin
+> DATA pin finished — 2 things on it.
 
-Echo is on **D8**, not D7.
+### Onto the ultrasonic connector
 
-### To the temperature connector
+**14.12** — **100 Ω**: one leg → **D6**, other leg → the **RX** pin
 
-**14.13** — **D3** → the **VCC** pin of the temperature connector
+**14.13** — **100 Ω**: one leg → **D8**, other leg → the **TX** pin
 
-### To the radio
+The echo goes to **D8**. Not D7.
+
+### Onto the radio sockets
 
 **14.14** — **D2** → J1 **pin 5**
 
@@ -356,32 +373,29 @@ Echo is on **D8**, not D7.
 
 **14.20** — **1 kΩ**: one leg → **D7**, other leg → the LED's **long leg**
 
-**14.21** — LED's **short leg** → **RAIL-SW**
+**14.21** — the LED's **short leg** → **BLUE**
 
-### Empty
+### Leave empty
 
-**14.22** — A3, A4, A5, A6, A7, D0, D1, RST, DTR stay empty.
+**14.22** — A3, A4, A5, A6, A7, D0, D1, RST, DTR → nothing.
 
 ---
 
 # STAGE 15 — SENSOR CABLES
 
-**15.1 — Ultrasonic.** Cable from the connector to the module:
-- **GND** pin → module **GND** pad
-- **RX** pin → module **RX** pad
-- **TX** pin → module **TX** pad
-- **+5V** pin → module **+5V** pad
+**15.1 — Ultrasonic.** Run a 4-wire cable from the connector to the module:
+GND → GND pad · RX → RX pad · TX → TX pad · +5V → +5V pad
 
-**15.2 — Temperature, both sensors in parallel** on the same 3 pins:
+**15.2 — Temperature.** Both DS18B20 probes go on the **same 3 pins**:
 - both **red** wires → **VCC** pin
 - both **black** wires → **GND** pin
 - both **yellow** wires → **DATA** pin
 
-Check each probe's colours with a meter before soldering.
-Sensor 1 goes at the transducer. Sensor 2 on a longer lead, low in the tank headspace.
+Check each probe's wire colours with a meter before soldering.
+One probe sits at the ultrasonic transducer. The other on a longer lead, hanging lower in the tank.
 
-**15.3 — Flow switch.** No polarity, either wire to either pin.
-Install it in the pipe with the **yellow arrow pointing the way the water flows**.
+**15.3 — Flow switch.** No plus or minus — either wire to either pin.
+Fit it in the pipe with the **yellow arrow pointing the way the water flows**.
 
 ---
 
@@ -389,28 +403,28 @@ Install it in the pipe with the **yellow arrow pointing the way the water flows*
 
 **Meter, power disconnected:**
 
-| Probes on | Must read |
+| Touch probes to | Should |
 |---|---|
-| RAIL-BAT− and RAIL-SW | **no beep** |
-| RAIL-BAT+ and RAIL-BAT− | no beep |
-| RAIL-BAT+ and RAIL-SW | no beep |
-| Ra-02 J1 pin 1 and RAIL-SW | beep |
-| Ra-02 J1 pin 2 and RAIL-SW | beep |
-| Ra-02 J2 pin 1 and RAIL-SW | beep |
-| Ra-02 J2 pin 8 and RAIL-SW | beep |
-| Pro Mini RAW and anything | no beep |
+| BLACK and BLUE | **not beep** |
+| RED and BLACK | not beep |
+| RED and BLUE | not beep |
+| Ra-02 J1 pin 1 and BLUE | beep |
+| Ra-02 J1 pin 2 and BLUE | beep |
+| Ra-02 J2 pin 1 and BLUE | beep |
+| Ra-02 J2 pin 8 and BLUE | beep |
+| Pro Mini RAW and anything | not beep |
 
-**Hole leg count** — count the legs physically in each:
+**Count the legs** on these five points:
 
-| Hole | Must have |
+| Point | Should have |
 |---|---|
-| H1 | 3 |
-| H2 | 4 |
-| H3 | 5 |
-| H4 | 3 |
-| H5 | 5 |
+| MOSFET left leg | 3 |
+| 74HC74 pin 1 | 3 |
+| 74HC74 pin 3 | 4 |
+| Temperature connector DATA pin | 2 |
+| Flow connector pin A | 4 |
 
-**Then repeat the stage 8 power test** with everything fitted. Ten magnet approaches, ten state changes.
+**Then repeat the stage 8 magnet test** with everything fitted. Ten approaches, ten changes.
 
 ---
 
@@ -419,7 +433,7 @@ Install it in the pipe with the **yellow arrow pointing the way the water flows*
 | Measure | Should be |
 |---|---|
 | Sleep current | 25 µA or less |
-| Current with a magnet resting on the reed | about 7.7 µA |
-| Voltage at 74HC74 pin 14 during a transmission, cells idle a week | above 2.0 V |
-| Ultrasonic blind zone — flat target, 2 cm outward in 5 mm steps | write it down |
-| Distance between the two transducer centres, callipers | write it down |
+| Current with a magnet sitting on the reed | about 7.7 µA |
+| Voltage on 74HC74 pin 14 while it transmits, cells left idle a week | above 2.0 V |
+| Ultrasonic blind zone — flat target, from 2 cm outward in 5 mm steps | write it down |
+| Distance between the two transducer centres, with callipers | write it down |
