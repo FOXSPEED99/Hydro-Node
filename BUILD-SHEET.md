@@ -10,7 +10,7 @@ Work top to bottom. Every step connects to something already on the board.
 
 **Reuse:** Pro Mini 3.3 V (LED + regulator already removed) · Ra-02 · reed switch · IRLZ44N · 1 MΩ · 1 kΩ · 4.7 kΩ · 100 kΩ · 4 × 100 nF · JST connectors · RCWL-1670 · WY-90 · DS18B20 · 2 × LS14500
 
-**Buy:** 3 × 1N5819 · 0.5 A fuse + holder · 1 × DS18B20 · 1 red LED · 1 × 470 kΩ · 2 × 1 MΩ · 1 × 1 kΩ · 6 × 100 Ω · 1 × 330 Ω · 5 × 100 nF · 2 × 10 µF · 1 × 100 µF (tantalum or electrolytic)
+**Buy:** 3 × 1N5819 · 0.5 A fuse + holder · 1 × DS18B20 · 1 red LED · 1 × 470 kΩ · 2 × 1 MΩ · 1 × 1 kΩ · 6 × 100 Ω · 1 × 330 Ω · 5 × 100 nF · 2 × 10 µF · 1 × 100 µF (tantalum, or ceramic 1210)
 
 **Also get:** wire in **4 colours** — red, black, blue, green.
 
@@ -19,10 +19,26 @@ Work top to bottom. Every step connects to something already on the board.
 | Value | What to actually buy | Polarity |
 |---|---|---|
 | **100 nF** × 9 | **Ceramic disc**, printed **104**. The ones you already have | None |
-| **10 µF** × 2 | Ceramic disc marked **106** if the shop has it, otherwise a small **electrolytic can** | Yes, unless ceramic |
-| **100 µF** × 1 | **Tantalum** (marked **107**) or an **electrolytic can**. Do not go looking for ceramic — see below | Yes |
+| **10 µF** × 2 | **Ceramic 1206 surface-mount** is ideal. A disc marked **106** or a small can also work | Yes, unless ceramic |
+| **100 µF** × 1 | **Tantalum** marked **107** (what you have) or **ceramic 1210 surface-mount** | Tantalum yes, ceramic no |
 
-**Do not hunt for a ceramic 100 µF.** At that value ceramic is made almost only as surface-mount. The through-hole versions are specialty distributor parts, some discontinued, and no ordinary shop stocks them. A tantalum or an electrolytic is the normal choice here and works fine.
+**Ceramic 100 µF only exists as surface-mount.** Through-hole versions are specialty distributor parts, some discontinued. Surface-mount is fine here — see the size table below.
+
+### Surface-mount sizes that hand-solder easily
+
+| Code | Size | Verdict |
+|---|---|---|
+| **1210** | 3.2 × 2.5 mm | Easy. Where 100 µF ceramic lives |
+| **1206** | 3.2 × 1.6 mm | Easy |
+| 0805 | 2.0 × 1.25 mm | Fine with care |
+| 0603 | 1.6 × 0.8 mm | Fiddly |
+| 0402 | 1.0 × 0.5 mm | Do not |
+
+A **1206 or 1210 is 3.2 mm long and perfboard holes are 2.54 mm apart**, so it sits straight across two neighbouring pads — no wires needed. A tantalum in case **C (6032)** or **D (7343)** spans about two hole pitches and fits the same way.
+
+**One thing about high-value ceramics — DC bias derating.** An MLCC loses capacitance when voltage is applied to it. A **100 µF 6.3 V X5R at 3.6 V can lose 50–70 %** of its value, so it behaves like 30–50 µF. Tantalum does not do this — its value is stable with applied voltage.
+
+So for the 100 µF: **the tantalum gives you the full value.** If you buy ceramic instead, get **16 V or 25 V** rated, where the derating is far smaller. Either works — it is bulk decoupling, not a precision job.
 
 **Reading the code on a ceramic disc:** the first 2 digits, then that many zeros, in picofarads.
 **104** = 10 + 4 zeros = 100000 pF = **100 nF** ← the one you already have
@@ -45,7 +61,7 @@ Work top to bottom. Every step connects to something already on the board.
 
 Backwards fails in every case. A **tantalum fails short and can burn** — it is the one part here where getting it wrong does more than just not work.
 
-**Surface-mount parts** (a flat block with no legs, like most tantalums) need short wires soldered to each end before they can go on perfboard. If you have a through-hole part of the same value, use that instead.
+**Surface-mount parts have no legs.** In 1206, 1210 or a tantalum case C/D they lie straight across two neighbouring perfboard pads and solder directly — no wires needed.
 
 ---
 
@@ -339,7 +355,7 @@ Now 3 capacitors. Cut their legs **as short as possible** so they sit right agai
 
 **13.9** — **100 µF**. **Plus → J1 pin 3. Minus → J2 pin 8.**
 
-For both: ceramic has no polarity. On an **aluminium can** the stripe is **minus**. On a **tantalum block** the bar is **plus**. If it is surface-mount with no legs, solder a short wire to each end first.
+For both: ceramic has no polarity. On an **aluminium can** the stripe is **minus**. On a **tantalum block** the bar is **plus**. A surface-mount part lies straight across two neighbouring pads — solder it there directly.
 
 **13.10** — J1 pins 6, 7, 8 and J2 pins 6, 7 → nothing, ever.
 
