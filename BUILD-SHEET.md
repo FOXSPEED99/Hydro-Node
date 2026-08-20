@@ -14,6 +14,23 @@ Work top to bottom. Every step connects to something already on the board.
 
 **Also get:** wire in **4 colours** — red, black, blue, green.
 
+### The capacitors — not all the same type
+
+| Value | Type | Polarity |
+|---|---|---|
+| **100 nF** × 9 | **Ceramic.** Small blue or yellow disc, printed **104** | None. Either leg either way |
+| **10 µF** × 2 | Ceramic if you can get it. Otherwise electrolytic | Ceramic: none. **Electrolytic: yes** |
+| **100 µF** × 1 | Ceramic if you can get it. Otherwise electrolytic | Ceramic: none. **Electrolytic: yes** |
+
+**Reading the code on a ceramic disc:** the first 2 digits, then that many zeros, in picofarads.
+**104** = 10 + 4 zeros = 100000 pF = **100 nF** ← the one you already have
+**106** = 10 + 6 zeros = **10 µF**
+**107** = **100 µF**
+
+**Telling an electrolytic's legs apart:** the can has a **stripe** printed down one side with **−** marks on it. The leg on that side is **minus**. The other leg is **plus** and is usually **longer**.
+
+Electrolytic fitted backwards will fail, and can burst. If in doubt, check before soldering.
+
 ---
 
 ## THE 4 WIRES
@@ -115,9 +132,11 @@ Pins **1, 3, 5** stay empty for now. Other parts will be soldered onto them in l
 - **plain end** → **RED**
 - **striped end** → **GREEN**
 
-**4.2** — A **10 µF** capacitor. It has 2 legs and no plus or minus.
-- one leg → **GREEN**
-- other leg → **BLACK**
+**4.2** — A **10 µF** capacitor.
+- **If ceramic** (small blob, no stripe): either leg either way.
+- **If electrolytic** (metal can, stripe down one side): **the striped leg is minus.**
+  - **plus leg (longer)** → **GREEN**
+  - **minus leg (striped side)** → **BLACK**
 
 **4.3** — A **100 nF** capacitor.
 - one leg → **GREEN**
@@ -298,9 +317,13 @@ Now 3 capacitors. Cut their legs **as short as possible** so they sit right agai
 
 **13.7** — **100 nF**: one leg → J1 pin 3, other leg → J2 pin 8
 
-**13.8** — **10 µF**: one leg → J1 pin 3, other leg → J2 pin 8
+**13.8** — **10 µF**.
+- **If ceramic:** either leg either way.
+- **If electrolytic:** **plus leg (longer)** → J1 pin 3 · **minus leg (striped side)** → J2 pin 8
 
-**13.9** — **100 µF**: one leg → J1 pin 3, other leg → J2 pin 8
+**13.9** — **100 µF**.
+- **If ceramic:** either leg either way.
+- **If electrolytic:** **plus leg (longer)** → J1 pin 3 · **minus leg (striped side)** → J2 pin 8
 
 **13.10** — J1 pins 6, 7, 8 and J2 pins 6, 7 → nothing, ever.
 
