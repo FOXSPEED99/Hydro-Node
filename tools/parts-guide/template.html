@@ -1,0 +1,1035 @@
+<title>Hydro Node Parts Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;1,400&family=JetBrains+Mono:wght@400;500&display=swap">
+
+<style>
+:root{
+  --ground:#EDF1F4;
+  --surface:#FFFFFF;
+  --tile:#F4F6F8;
+  --tile-edge:#DCE3E8;
+  --ink:#0E1A21;
+  --ink-soft:#3A4E5A;
+  --muted:#5E7383;
+  --line:#D7DEE4;
+  --line-soft:#E5EAEE;
+  --accent:#0E5C87;
+  --accent-soft:#E2EDF4;
+  --brass:#9A6E18;
+  --brass-soft:#F3EBDA;
+  --danger:#A2372A;
+  --danger-soft:#F8E9E6;
+  --shadow:0 1px 2px rgba(14,26,33,.05), 0 8px 24px -12px rgba(14,26,33,.16);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --ground:#0B1317;
+    --surface:#131E25;
+    --tile:#E7ECEF;
+    --tile-edge:#2A3A44;
+    --ink:#E1EAF0;
+    --ink-soft:#B6C7D1;
+    --muted:#8CA1AE;
+    --line:#26343D;
+    --line-soft:#1D2A32;
+    --accent:#5CB0E0;
+    --accent-soft:#12303F;
+    --brass:#D6A445;
+    --brass-soft:#2A2416;
+    --danger:#E8836F;
+    --danger-soft:#331915;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+  }
+}
+:root[data-theme="dark"]{
+  --ground:#0B1317;
+  --surface:#131E25;
+  --tile:#E7ECEF;
+  --tile-edge:#2A3A44;
+  --ink:#E1EAF0;
+  --ink-soft:#B6C7D1;
+  --muted:#8CA1AE;
+  --line:#26343D;
+  --line-soft:#1D2A32;
+  --accent:#5CB0E0;
+  --accent-soft:#12303F;
+  --brass:#D6A445;
+  --brass-soft:#2A2416;
+  --danger:#E8836F;
+  --danger-soft:#331915;
+  --shadow:0 1px 2px rgba(0,0,0,.4), 0 8px 24px -12px rgba(0,0,0,.7);
+}
+
+*{box-sizing:border-box}
+body{
+  margin:0;
+  background:var(--ground);
+  color:var(--ink);
+  font-family:"Source Sans 3",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:17px;
+  line-height:1.62;
+  -webkit-font-smoothing:antialiased;
+}
+img{max-width:100%;display:block}
+a{color:var(--accent)}
+a:focus-visible,button:focus-visible{outline:2px solid var(--accent);outline-offset:3px;border-radius:2px}
+
+.wrap{max-width:960px;margin:0 auto;padding:0 24px}
+.prose{max-width:68ch}
+
+h1,h2,h3,h4{font-family:Archivo,"Source Sans 3",sans-serif;text-wrap:balance;margin:0}
+h1{font-size:clamp(2.3rem,6vw,3.5rem);font-weight:700;letter-spacing:-.028em;line-height:1.03}
+h2{font-size:clamp(1.5rem,3.4vw,2rem);font-weight:700;letter-spacing:-.02em;line-height:1.14}
+h3{font-size:1.28rem;font-weight:600;letter-spacing:-.012em;line-height:1.2}
+h4{font-size:1.02rem;font-weight:600;letter-spacing:-.005em}
+p{margin:0}
+
+.eyebrow{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:.7rem;font-weight:500;letter-spacing:.16em;text-transform:uppercase;
+  color:var(--brass);margin:0;
+}
+
+/* ---------- hero ---------- */
+.hero{
+  padding:72px 0 56px;
+  border-bottom:1px solid var(--line);
+  background:
+    linear-gradient(180deg,var(--accent-soft) 0%,transparent 62%);
+}
+.hero .eyebrow{margin-bottom:18px}
+.hero h1{margin-bottom:22px}
+.lede{font-size:1.2rem;color:var(--ink-soft);max-width:60ch}
+.hero-meta{
+  display:flex;flex-wrap:wrap;gap:8px;margin-top:30px;
+}
+.chip{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:.74rem;letter-spacing:.04em;
+  padding:5px 11px;border-radius:3px;
+  background:var(--surface);border:1px solid var(--line);
+  color:var(--muted);
+}
+
+/* ---------- generic section ---------- */
+section{padding:60px 0}
+section + section{border-top:1px solid var(--line-soft)}
+.sec-head{margin-bottom:34px}
+.sec-head .eyebrow{margin-bottom:10px}
+.sec-head p{color:var(--muted);margin-top:12px;max-width:64ch}
+
+/* ---------- contents ---------- */
+.toc{
+  display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));
+  gap:1px;background:var(--line);border:1px solid var(--line);border-radius:4px;overflow:hidden;
+}
+.toc a{
+  background:var(--surface);padding:16px 18px;text-decoration:none;color:var(--ink);
+  display:flex;flex-direction:column;gap:3px;
+}
+.toc a:hover{background:var(--accent-soft)}
+.toc b{font-family:Archivo,sans-serif;font-weight:600;font-size:.98rem}
+.toc span{font-size:.84rem;color:var(--muted)}
+
+/* ---------- numbered beats ---------- */
+.beats{display:flex;flex-direction:column;gap:0;counter-reset:beat}
+.beat{
+  display:grid;grid-template-columns:56px 1fr;gap:20px;
+  padding:24px 0;border-top:1px solid var(--line-soft);
+}
+.beat:first-child{border-top:none;padding-top:0}
+.beat-n{
+  font-family:"JetBrains Mono",ui-monospace,monospace;
+  font-size:.86rem;font-weight:500;color:var(--brass);
+  padding-top:5px;letter-spacing:.06em;
+}
+.beat h4{margin-bottom:6px}
+.beat p{color:var(--ink-soft)}
+
+/* ---------- wire table ---------- */
+.wires{display:flex;flex-direction:column;gap:14px;margin-top:6px}
+.wire{
+  display:grid;grid-template-columns:20px 92px 1fr;gap:16px;align-items:start;
+  background:var(--surface);border:1px solid var(--line);border-radius:4px;padding:16px 18px;
+}
+.swatch{width:14px;height:14px;border-radius:50%;margin-top:6px;border:1px solid rgba(0,0,0,.28)}
+.wire-name{
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:500;
+  font-size:.82rem;letter-spacing:.1em;padding-top:4px;
+}
+.wire p{color:var(--ink-soft);font-size:.97rem}
+
+/* ---------- part cards ---------- */
+.group{margin-top:52px}
+.group:first-of-type{margin-top:0}
+.group-head{
+  display:flex;align-items:baseline;gap:16px;
+  padding-bottom:12px;margin-bottom:26px;
+  border-bottom:2px solid var(--brass);
+}
+.group-head h2{font-size:1.42rem}
+.group-head span{
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.72rem;
+  letter-spacing:.1em;text-transform:uppercase;color:var(--muted);margin-left:auto;
+  white-space:nowrap;
+}
+
+.part{
+  display:grid;grid-template-columns:210px 1fr;gap:30px;
+  background:var(--surface);border:1px solid var(--line);border-radius:5px;
+  padding:24px;margin-bottom:20px;box-shadow:var(--shadow);
+}
+.tile{
+  position:relative;background:var(--tile);border:1px solid var(--tile-edge);
+  border-radius:4px;aspect-ratio:1;display:flex;align-items:center;justify-content:center;
+  padding:14px;overflow:hidden;
+}
+.tile img{max-height:100%;width:auto;object-fit:contain;mix-blend-mode:multiply}
+.tile svg{max-height:100%;width:100%}
+.tile-tag{
+  position:absolute;left:0;bottom:0;
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.62rem;letter-spacing:.08em;
+  text-transform:uppercase;background:rgba(14,26,33,.72);color:#fff;
+  padding:3px 8px;border-radius:0 3px 0 3px;
+}
+.part-head{margin-bottom:18px}
+.part-head h3{margin-bottom:8px}
+.specs{display:flex;flex-wrap:wrap;gap:6px}
+.specs span{
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.7rem;letter-spacing:.03em;
+  background:var(--accent-soft);color:var(--accent);padding:3px 8px;border-radius:3px;
+}
+.part dl{margin:0}
+.part dt{
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.66rem;font-weight:500;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--muted);
+  margin:22px 0 5px;
+}
+.part dl > dt:first-child{margin-top:0}
+.part dd{margin:0;color:var(--ink-soft)}
+.part dd + dd{margin-top:11px}
+.part dd.warn{
+  border-left:3px solid var(--danger);background:var(--danger-soft);
+  padding:10px 14px;border-radius:0 3px 3px 0;color:var(--ink);
+}
+.part dd.warn strong{color:var(--danger)}
+.part dd.note{
+  border-left:3px solid var(--brass);background:var(--brass-soft);
+  padding:10px 14px;border-radius:0 3px 3px 0;color:var(--ink);
+}
+
+/* ---------- tables ---------- */
+.tbl-scroll{overflow-x:auto;margin-top:22px;border:1px solid var(--line);border-radius:4px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-size:.94rem}
+th,td{text-align:left;padding:11px 15px;border-bottom:1px solid var(--line-soft);vertical-align:top}
+th{
+  font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.66rem;font-weight:500;
+  letter-spacing:.13em;text-transform:uppercase;color:var(--muted);
+  background:var(--ground);border-bottom:1px solid var(--line);white-space:nowrap;
+}
+tr:last-child td{border-bottom:none}
+td.v{font-family:"JetBrains Mono",ui-monospace,monospace;font-weight:500;white-space:nowrap;font-variant-numeric:tabular-nums}
+td.qty{font-family:"JetBrains Mono",ui-monospace,monospace;text-align:right;color:var(--muted);font-variant-numeric:tabular-nums}
+.bands{display:inline-flex;gap:2px;vertical-align:middle;margin-right:8px}
+.bands i{width:5px;height:15px;border-radius:1px;border:1px solid rgba(0,0,0,.2);display:block}
+
+/* ---------- callout ---------- */
+.callout{
+  background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--accent);
+  border-radius:0 4px 4px 0;padding:20px 24px;margin-top:26px;
+}
+.callout h4{margin-bottom:8px}
+.callout p{color:var(--ink-soft)}
+.callout p + p{margin-top:10px}
+.callout.hot{border-left-color:var(--danger)}
+.callout.hot h4{color:var(--danger)}
+
+.open-list{display:flex;flex-direction:column;gap:0;margin-top:8px}
+.open-item{display:grid;grid-template-columns:88px 1fr;gap:18px;padding:18px 0;border-top:1px solid var(--line-soft)}
+.open-item:first-child{border-top:none}
+.open-id{font-family:"JetBrains Mono",ui-monospace,monospace;font-size:.8rem;font-weight:500;color:var(--danger);padding-top:2px}
+.open-item p{color:var(--ink-soft)}
+.open-item h4{margin-bottom:5px}
+
+footer{
+  border-top:1px solid var(--line);padding:36px 0 60px;color:var(--muted);font-size:.9rem;
+}
+footer p + p{margin-top:8px}
+
+@media (max-width:820px){
+  .part{grid-template-columns:1fr;gap:20px;padding:20px}
+  .tile{max-width:260px;aspect-ratio:1}
+  .wire{grid-template-columns:20px 1fr;}
+  .wire-name{grid-column:2}
+  .wire p{grid-column:2}
+  .beat{grid-template-columns:40px 1fr;gap:14px}
+  .open-item{grid-template-columns:1fr;gap:6px}
+}
+@media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
+</style>
+
+<div class="hero">
+  <div class="wrap">
+    <p class="eyebrow">Hydro Node · rooftop water tank sensor</p>
+    <h1>Every part, and&nbsp;what it&nbsp;is&nbsp;for</h1>
+    <p class="lede">A photo of each component, what its job is in this circuit, and why it was picked over the alternatives. Written to be read at the bench with the parts in front of you.</p>
+    <div class="hero-meta">
+      <span class="chip">Battery powered · 2 year target</span>
+      <span class="chip">433 MHz LoRa · ~50 m</span>
+      <span class="chip">Deployment: Syria</span>
+    </div>
+  </div>
+</div>
+
+<div class="wrap">
+
+<section>
+  <div class="sec-head prose">
+    <p class="eyebrow">Start here</p>
+    <h2>What the device actually does</h2>
+  </div>
+  <div class="prose">
+    <p>The Hydro Node sits on the water tank on the roof. Every few minutes it wakes up, measures how far down the water surface is, measures the water temperature, checks whether water is flowing in the pipe, sends those three raw numbers by radio to the Hydro Hub inside the house, and goes back to sleep.</p>
+    <p style="margin-top:14px">It does no maths. It does not know how many litres the tank holds or what percentage full it is. It just reports what it measured. The Hub — which is on mains power, has a screen and a Wi-Fi connection — does all the calculating. That is deliberate: every calculation the Node does not do is battery it does not spend.</p>
+  </div>
+
+  <div class="beats" style="margin-top:36px">
+    <div class="beat">
+      <div class="beat-n">01</div>
+      <div>
+        <h4>You touch a magnet to the side of the box</h4>
+        <p>There is no button and no hole in the enclosure. A magnet held against a marked spot is the only control the device has.</p>
+      </div>
+    </div>
+    <div class="beat">
+      <div class="beat-n">02</div>
+      <div>
+        <h4>A sealed glass switch inside notices the magnet</h4>
+        <p>The reed switch closes for as long as the magnet is near. On its own that would only be a push-button — hold the magnet, device on; take it away, device off.</p>
+      </div>
+    </div>
+    <div class="beat">
+      <div class="beat-n">03</div>
+      <div>
+        <h4>A memory chip turns that touch into a state</h4>
+        <p>The 74HC74 holds one bit: on or off. Each time the reed closes, that bit flips and then <em>stays</em>. Take the magnet away and nothing changes back. Touch it again and it flips the other way.</p>
+      </div>
+    </div>
+    <div class="beat">
+      <div class="beat-n">04</div>
+      <div>
+        <h4>A MOSFET does the actual switching</h4>
+        <p>The memory chip drives a MOSFET, and the MOSFET connects or disconnects the ground for the whole rest of the board. Disconnected, nothing on the board can draw current — not the radio, not the microcontroller, not the sensors.</p>
+      </div>
+    </div>
+    <div class="beat">
+      <div class="beat-n">05</div>
+      <div>
+        <h4>Once on, the Pro Mini runs the measuring cycle</h4>
+        <p>Wake on a timer, power up the temperature probes, ask the ultrasonic for a distance, read the flow switch, hand the numbers to the radio, transmit, sleep again. Most of the time it is asleep drawing microamps.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head prose">
+    <p class="eyebrow">The wiring, in one page</p>
+    <h2>Four wires run across the board</h2>
+    <p>Every component on the board connects to one of these four. If you understand these, the rest of the build is just parts hanging off them.</p>
+  </div>
+
+  <div class="wires">
+    <div class="wire">
+      <div class="swatch" style="background:#C0392B"></div>
+      <div class="wire-name">RED</div>
+      <p>Battery plus, 3.6&nbsp;V. It is live all the time, even when the device is "off". It feeds the Pro Mini, the radio and the ultrasonic sensor.</p>
+    </div>
+    <div class="wire">
+      <div class="swatch" style="background:#1C1C1C"></div>
+      <div class="wire-name">BLACK</div>
+      <p>Battery minus. Also connected all the time. It is the true bottom of the whole circuit.</p>
+    </div>
+    <div class="wire">
+      <div class="swatch" style="background:#2266B8"></div>
+      <div class="wire-name">BLUE</div>
+      <p>The ground that switches. Every part's ground pin goes here — <em>not</em> to black. When the device is off, blue is floating, with no path back to the battery, so nothing can draw current no matter how it is wired.</p>
+    </div>
+    <div class="wire">
+      <div class="swatch" style="background:#2E8B57"></div>
+      <div class="wire-name">GREEN</div>
+      <p>A small private supply, used by the 74HC74 and the reed switch only. It comes off red through a diode and has its own capacitor.</p>
+    </div>
+  </div>
+
+  <div class="callout">
+    <h4>Why green exists at all</h4>
+    <p>The memory chip has to keep remembering "on" even while the radio is transmitting. A transmit burst pulls a hard, sudden current out of the battery and the whole supply sags for a few milliseconds. If the memory chip's supply sagged with it, the chip could forget its state and the device would switch itself off in the field.</p>
+    <p>The diode stops the sag from reaching green, and the capacitor on green holds the chip up through the burst. It is a small piece of the circuit that exists entirely to stop one specific failure.</p>
+  </div>
+
+  <div class="callout">
+    <h4>Why the switch is in the ground, not in the plus</h4>
+    <p>A MOSFET that switches the ground side turns on with a positive voltage on its gate, which is exactly what a 3.3&nbsp;V logic chip produces. Switching the plus side needs a different type of MOSFET and a gate driven <em>above</em> the battery voltage to turn fully on — more parts, more current, more to go wrong.</p>
+    <p>The cost is that black and blue are two different grounds and must never touch. That is the single most important thing to check with a meter while building.</p>
+  </div>
+</section>
+
+<section>
+  <div class="sec-head prose">
+    <p class="eyebrow">Contents</p>
+    <h2>The parts</h2>
+  </div>
+  <div class="toc">
+    <a href="#g-power"><b>Power and the switch</b><span>7 parts</span></a>
+    <a href="#g-brain"><b>Brain and radio</b><span>4 parts</span></a>
+    <a href="#g-sensors"><b>The three sensors</b><span>3 parts</span></a>
+    <a href="#g-small"><b>Resistors and capacitors</b><span>the small stuff</span></a>
+    <a href="#g-conn"><b>Connectors</b><span>4 cables in</span></a>
+    <a href="#g-not"><b>Parts we are not fitting</b><span>and why</span></a>
+  </div>
+</section>
+
+<section>
+
+<!-- ================= POWER ================= -->
+<div class="group" id="g-power">
+  <div class="group-head">
+    <h2>Power and the on / off switch</h2>
+    <span>Stages 1 – 8</span>
+  </div>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{BATTERY}}" alt="Two SAFT LS14500 AA-sized lithium cells, white and green labels reading 3.6 V Li-SOCl2">
+      <span class="tile-tag">Photo</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>SAFT LS14500 lithium cell × 2</h3>
+        <div class="specs"><span>3.6 V</span><span>2.6 Ah</span><span>Li-SOCl₂</span><span>AA size</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>An AA-sized battery, but not an ordinary one. The chemistry is lithium thionyl chloride — that is what <span style="font-family:'JetBrains Mono',monospace">Li-SOCl₂</span> on the green label means. It is a one-use cell.</dd>
+        <dt>What it does here</dt>
+        <dd>It is the only power in the device. Two cells sit side by side and feed the red wire together.</dd>
+        <dt>Why this one</dt>
+        <dd>An alkaline AA gives 1.5&nbsp;V and its voltage drops steadily as it empties, so the circuit would be running at a different voltage every month. This cell holds 3.6&nbsp;V almost flat until it is nearly finished. It loses roughly 1&nbsp;% of its charge per year just sitting there, and it works from about −60&nbsp;°C to +85&nbsp;°C — which matters on a roof in a Syrian August. A two-year life is realistic with these and is not realistic without them.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn"><strong>Never charge it, never short it.</strong> This chemistry is not rechargeable and will vent or burst if current is pushed into it. That is the whole reason there is a diode on each cell — see the next part. It also cannot supply more than about 50&nbsp;mA continuously, which is why the radio needs capacitors close to it rather than pulling its transmit burst straight from the cells.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      {{SVG_DIODE}}
+      <span class="tile-tag">Drawing</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>1N5819 Schottky diode × 3</h3>
+        <div class="specs"><span>40 V</span><span>1 A</span><span>≈0.3 V drop</span><span>DO-41</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A one-way valve for electricity. Current passes from the plain end to the striped end, and is blocked going the other way. The painted stripe is the only marking and it tells you which way round it goes.</dd>
+        <dt>What it does here</dt>
+        <dd>Two of them live inside the battery pack, one on each cell's plus terminal. They let both cells push current out to the circuit, but stop either cell pushing current <em>into</em> the other one. The third diode feeds the green wire from the red wire, and stops the sag caused by a radio transmit burst from reaching the memory chip.</dd>
+        <dt>Why this one</dt>
+        <dd>Two cells wired directly together will never be exactly the same voltage — one is always slightly higher, and it will push current into the weaker one. On a rechargeable cell that is harmless. On this chemistry it is charging, which is the thing that must never happen. A Schottky was chosen over an ordinary silicon diode because silicon eats about 0.7&nbsp;V and a Schottky eats around 0.3&nbsp;V at the small currents here. Out of a 3.6&nbsp;V budget, that difference is worth having.</dd>
+        <dt>Watch out</dt>
+        <dd>Get the stripe the wrong way round and nothing works at all — the pack will read 0&nbsp;V. That is the test at the end of stage 1.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      {{SVG_FUSE}}
+      <span class="tile-tag">Drawing</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>0.5 A fast-blow fuse + holder</h3>
+        <div class="specs"><span>0.5 A</span><span>fast-blow</span><span>in the pack</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A thin wire inside a small glass tube. Too much current through it and the wire melts, permanently breaking the connection.</dd>
+        <dt>What it does here</dt>
+        <dd>It sits between the two cells and the red wire — the last thing the current passes through on its way out of the pack.</dd>
+        <dt>Why this one</dt>
+        <dd>The board never draws more than about 150&nbsp;mA, and that only for a few milliseconds while the radio transmits. The cells can deliver far more than that into a fault. If a solder whisker ever shorts red to black, the fuse opens long before the cells get hot. 0.5&nbsp;A is comfortably above anything normal and comfortably below anything dangerous.</dd>
+        <dt>Watch out</dt>
+        <dd>Fast-blow, not slow-blow. A slow-blow fuse is designed to tolerate exactly the kind of overload we want it to catch.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{REED}}" alt="A reed switch: two thin metal blades sealed inside a small green glass tube with long gold wire legs">
+      <span class="tile-tag">Photo</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>Reed switch</h3>
+        <div class="specs"><span>glass body</span><span>magnet operated</span><span>2 legs</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>Two thin springy metal blades sealed inside a glass tube, with a tiny gap between them. Bring a magnet near and the blades pull together and touch. Take the magnet away and they spring apart again.</dd>
+        <dt>What it does here</dt>
+        <dd>It is the on/off control for the entire device. It sits just inside the wall of the enclosure, at a spot marked on the outside.</dd>
+        <dt>Why this one</dt>
+        <dd>The device lives on a roof, in sun, rain and dust. A real push-button means a hole in the box, and a hole is where water gets in. A reed switch works through solid plastic, so the enclosure is never opened once it is sealed. It also uses no power at all when it is not being touched.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn"><strong>The body is glass.</strong> Never bend a leg right where it enters the glass, and never grip the glass with pliers. Hold the leg with pliers between the glass and where you want the bend, then bend beyond the pliers. A cracked seal lets air in and the contacts corrode.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{MAGNET}}" alt="Five small round neodymium disc magnets, silver coloured">
+      <span class="tile-tag">Photo</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>Neodymium disc magnet</h3>
+        <div class="specs"><span>not on the board</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A small, very strong permanent magnet.</dd>
+        <dt>What it does here</dt>
+        <dd>It is the key. Hold it on the marked spot for a moment and the device changes from off to on, or on to off.</dd>
+        <dt>Why this one</dt>
+        <dd>A weak fridge magnet will not reliably close a reed switch through the wall of an enclosure. Neodymium will, from a centimetre or two away.</dd>
+        <dt>Watch out</dt>
+        <dd>Keep it away from the assembled board while you are working, or you will toggle the state without meaning to. Tape a spare to the Hub so it does not get lost.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{DIP14}}" alt="A 14-pin black DIP integrated circuit with a notch at one end and silver legs down both sides">
+      <span class="tile-tag">Photo — see note</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>74HC74 — the memory chip</h3>
+        <div class="specs"><span>dual D flip-flop</span><span>2 V – 6 V</span><span>14 pins</span><span>DIP</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A chip that remembers one thing: a single yes-or-no, held until it is told to change. In datasheets it is called a D flip-flop. Ours has two of them inside; we use one.</dd>
+        <dt>What it does here</dt>
+        <dd>It is what turns the magnet from a button into a switch. Every time the reed closes, the chip flips its stored bit and holds the new value. Take the magnet away and the state stays. That stored bit is what drives the MOSFET.</dd>
+        <dt>Why this one</dt>
+        <dd>We also have the older CD4013BE, which does the same job. The difference is the minimum supply voltage: the 74HC74 works down to 2&nbsp;V, the CD4013BE needs 3&nbsp;V. Near the end of the battery's life, with the supply already low and the radio pulling a transmit burst, a chip with a 3&nbsp;V floor can drop below it, forget its state, and shut the device down on a roof somewhere. A 2&nbsp;V floor leaves real room. That is the entire reason for the swap.</dd>
+        <dt>Watch out</dt>
+        <dd class="note">The photo is the <strong>CD4013BE</strong> — the chip we are <em>not</em> fitting. It is shown because the 74HC74 comes in exactly the same black 14-leg body with a notch at one end. Read the printing on yours: it must say <span style="font-family:'JetBrains Mono',monospace">74HC74</span>. To count pins, put the notch at the top: pin 1 is top-left, count down the left side to 7, then jump to bottom-right for pin 8 and count up the right side to 14.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{MOSFET}}" alt="An IRLZ44N power MOSFET in a black TO-220 package with a metal tab and three legs">
+      <span class="tile-tag">Photo</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>IRLZ44N MOSFET</h3>
+        <div class="specs"><span>N-channel</span><span>logic level</span><span>≈0.022 Ω on</span><span>TO-220</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A transistor used purely as a switch. Three legs: put a small voltage on the left one (the gate) and the other two connect; take it away and they disconnect. There are no moving parts and it can switch millions of times.</dd>
+        <dt>What it does here</dt>
+        <dd>It is the real switch in the device. It sits between the blue wire and the black wire. When the memory chip says "on", the MOSFET joins them and every part on the board suddenly has a path back to the battery. When it says "off", the two are separated and nothing can draw current.</dd>
+        <dt>Why this one</dt>
+        <dd>The <strong>L</strong> in IRLZ44N means logic level — it turns fully on with only 3.3&nbsp;V on the gate. The similarly named IRFZ44N needs around 10&nbsp;V and would sit half-on here, getting warm and wasting power. When the IRLZ44N is fully on its datasheet resistance is about 0.022&nbsp;Ω at 5&nbsp;V gate drive, a little higher at 3.6&nbsp;V. Either way, at 150&nbsp;mA that is a few millivolts — effectively a piece of wire.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn">The <strong>metal tab at the back is electrically connected to the middle leg</strong>, not isolated. If the tab touches anything else on the board, the switch is bypassed and the device can never turn off. Keep it clear or insulate it.</dd>
+      </dl>
+    </div>
+  </article>
+</div>
+
+<!-- ================= BRAIN ================= -->
+<div class="group" id="g-brain">
+  <div class="group-head">
+    <h2>The brain and the radio</h2>
+    <span>Stages 13 – 14</span>
+  </div>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{PROMINI}}" alt="An Arduino Pro Mini board, blue PCB with an ATmega328P chip and rows of unpopulated header holes">
+      <span class="tile-tag">Photo</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>Arduino Pro Mini 3.3 V</h3>
+        <div class="specs"><span>ATmega328P</span><span>3.3 V</span><span>8 MHz</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A small board carrying a microcontroller — a computer with no screen and no operating system, running one program forever.</dd>
+        <dt>What it does here</dt>
+        <dd>It runs the cycle: wake on a timer, switch power to the temperature probes, ask the ultrasonic for a distance, look at the flow switch, hand all three readings to the radio, blink the LED, sleep. It deliberately does no arithmetic beyond packing the numbers into a message.</dd>
+        <dt>Why this one</dt>
+        <dd>The 3.3&nbsp;V 8&nbsp;MHz version runs straight from the battery with nothing in between. A 5&nbsp;V board would need a boost converter, and a boost converter draws current every second of every day whether the device is doing anything or not. This chip also sleeps down to a few microamps, which is what a two-year battery target actually requires.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn"><strong>Leave the RAW pin unconnected — permanently.</strong> The on-board regulator and power LED have already been removed from ours, and RAW no longer goes anywhere useful. Also check whether the D13 LED is still fitted; if it is, it draws current every time the firmware uses D13 for the radio clock.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{RA02}}" alt="An Ai-Thinker Ra-02 LoRa module on a small blue PCB with a shielded can printed 433 MHz and pin labels around the edge">
+      <span class="tile-tag">Photo</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>Ai-Thinker Ra-02 LoRa module</h3>
+        <div class="specs"><span>SX1278</span><span>433 MHz</span><span>+18 dBm</span><span>3.3 V only</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A radio module. The chip under the metal can is a Semtech SX1278, and the printing on the shield gives its band as 410–525&nbsp;MHz and its transmit power as +18&nbsp;dBm.</dd>
+        <dt>What it does here</dt>
+        <dd>It carries the readings to the Hub inside the house — roughly 50&nbsp;m away, through thick concrete walls.</dd>
+        <dt>Why this one</dt>
+        <dd>Wi-Fi and Bluetooth will not survive that path. LoRa trades speed for reach: it spreads a tiny amount of data over a relatively long transmission, and in exchange the receiver can pull the signal out from below the background noise. We only need a few dozen bytes every few minutes, so being slow costs us nothing. 433&nbsp;MHz also passes through concrete better than the 868 or 915&nbsp;MHz bands, and there is no restriction on using it here.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn"><strong>3.3 V only — 5 V will destroy it.</strong> It also pulls a short, hard current burst while transmitting; the SX1278 datasheet gives 120&nbsp;mA at the highest power setting. The cells cannot supply that cleanly on their own, which is exactly what the 100&nbsp;nF, 10&nbsp;µF and 100&nbsp;µF capacitors soldered right at its socket are for. <strong>Never power it up without an antenna connected</strong> — the transmitter has nowhere to send its energy and it goes back into the chip.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{PIGTAIL}}" alt="A short black coaxial pigtail cable with a gold SMA bulkhead connector at one end and a small u.FL snap connector at the other">
+      <span class="tile-tag">Photo</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>u.FL to SMA pigtail + antenna</h3>
+        <div class="specs"><span>15 cm</span><span>bulkhead nut</span><span>λ/4 ≈ 17 cm</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A short coaxial cable. One end is a tiny connector that snaps onto the socket on the Ra-02; the other is a threaded barrel with a nut, which mounts through a hole in the enclosure wall. The antenna screws onto it from outside.</dd>
+        <dt>What it does here</dt>
+        <dd>It gets the radio signal out of a sealed plastic box without opening the box.</dd>
+        <dt>Why this one</dt>
+        <dd>The antenna has to be outside — the enclosure, and especially any metal near it, absorbs the signal. The tiny socket on the module cannot take the mechanical strain of an antenna hanging off it, and it is not weatherproof. The bulkhead nut clamps through a drilled hole with a washer and seals it. Buy the antenna to match the band: a quarter-wave whip for 433&nbsp;MHz is about 17&nbsp;cm long. A 2.4&nbsp;GHz Wi-Fi antenna, which looks identical and has the same connector, will not work.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn">The small snap connector is rated for very few connections — around 30 on a good one, fewer on a cheap one. <strong>Snap it on once and leave it.</strong> If you must remove it, pull straight up by the metal connector body, never by the cable.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{LED}}" alt="A 5 mm through-hole LED with a blue tinted lens and two legs of different lengths">
+      <span class="tile-tag">Photo — see note</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>Red LED + 1 kΩ resistor</h3>
+        <div class="specs"><span>5 mm</span><span>≈1.8 V</span><span>on D7</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A small light. The longer leg is plus. The 1&nbsp;kΩ resistor in series with it sets how much current flows and therefore how bright it is.</dd>
+        <dt>What it does here</dt>
+        <dd>It is the only thing the device can tell you without a meter. The firmware blinks it once when it powers up and once for each successful transmission.</dd>
+        <dt>Why red rather than the blue one we have</dt>
+        <dd>An LED needs a minimum voltage across it before it lights at all, and that voltage depends on the colour. Red starts at roughly 1.8&nbsp;V. Blue needs about 3.0–3.2&nbsp;V, which is nearly the whole battery — so as the cells age, a blue LED dims and eventually stops lighting while the device is still perfectly healthy. Red also looks bright at very small currents.</dd>
+        <dt>Watch out</dt>
+        <dd class="note">The photo is the <strong>blue</strong> LED we already have, shown for shape only. Fit a <strong>red</strong> one. Long leg through the 1&nbsp;kΩ to D7, short leg to blue. It must be completely off in normal sleep — if it glows faintly, something is wrong.</dd>
+      </dl>
+    </div>
+  </article>
+</div>
+
+<!-- ================= SENSORS ================= -->
+<div class="group" id="g-sensors">
+  <div class="group-head">
+    <h2>The three sensors</h2>
+    <span>Stages 10 – 12, 15</span>
+  </div>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{RCWL}}" alt="An RCWL-1670 ultrasonic module: a blue PCB with two black cylindrical transducers and four pads marked GND RX TX and +5V">
+      <span class="tile-tag">Photo</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>RCWL-1670 ultrasonic sensor</h3>
+        <div class="specs"><span>0.05 – 1 m</span><span>3.3 V ok</span><span>serial output</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A distance sensor. The two black drums are transducers: one produces a very short click far too high in pitch to hear, the other listens for the echo coming back. The time between them tells you how far away the surface is.</dd>
+        <dt>What it does here</dt>
+        <dd>It measures the gap from the sensor down to the water surface. That raw distance is what gets sent. The Hub knows the tank's dimensions and works out the volume from there.</dd>
+        <dt>Why this one</dt>
+        <dd>Three reasons over the common HC-SR04. It runs on 3.3&nbsp;V, so no level shifting and no 5&nbsp;V rail. It starts giving useful readings from about 5&nbsp;cm rather than about 20&nbsp;cm, which matters when the tank is nearly full and the water is close to the sensor. And this version reports its answer over a serial line instead of making the microcontroller sit there timing a pulse by hand — so the Pro Mini can be idle while the measurement happens.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn">Ours is the four-pad version printed <span style="font-family:'JetBrains Mono',monospace">GND · RX · TX · +5V</span> — <strong>check yours matches before wiring</strong>, because several different boards carry the RCWL-1670 name. Also: the two drums are about 40&nbsp;mm apart, so the sound travels down and back along a shallow V rather than straight down. Close to the surface that makes the reading come out longer than the true distance. The Hub corrects for it, but only if you <strong>measure the real centre-to-centre spacing with callipers and write it down</strong>.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      {{SVG_DS18B20}}
+      <span class="tile-tag">Drawing</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>DS18B20 temperature probe × 2</h3>
+        <div class="specs"><span>1-Wire</span><span>digital</span><span>stainless probe</span><span>needs 4.7 kΩ</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A temperature sensor sealed in a stainless steel tube on a three-wire cable. Usually red is power, black is ground, yellow is data.</dd>
+        <dt>What it does here</dt>
+        <dd>Two jobs, and the second is the important one. It reports the water temperature, which is useful information on its own. It also lets the Hub correct the ultrasonic reading — sound travels faster through warm air than cold, so a distance measured without knowing the temperature is simply wrong. Roughly one degree of temperature error becomes about 0.18&nbsp;% of distance error.</dd>
+        <dd>One probe sits up at the ultrasonic transducer measuring the air the sound actually travels through. The other hangs lower on a longer lead, in the water.</dd>
+        <dt>Why this one</dt>
+        <dd>It sends a digital number, not a voltage. A sensor that outputs a voltage would have that voltage corrupted by a long cable running past a radio transmitter. A digital number either arrives intact or fails a checksum. Each chip also has a unique serial number burned into it, so both probes can share the same three wires and the Pro Mini can still tell which is which.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn">The data line <strong>must</strong> have a 4.7&nbsp;kΩ resistor pulling it up to VCC or the sensor produces nothing at all — that is the resistor in stage 11, and it is not optional. Also <strong>check each probe's wire colours with a meter before soldering</strong>; cheap probes do not always follow the red/black/yellow convention, and getting power and data swapped destroys the sensor.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{FLOW}}" alt="A brass inline flow switch with a red plastic cap, a yellow flow direction arrow, threaded ports and a black two-wire cable">
+      <span class="tile-tag">Photo — see note</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>WY-90 flow switch</h3>
+        <div class="specs"><span>brass inline</span><span>2 wires</span><span>DC 12~24 V rated</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A brass body that screws into the pipe. Water pushing through it moves a small magnet inside, and that magnet closes a reed switch — the same kind of switch as the magnet-operated one on the board. Two wires come out. It generates no electricity of its own; it is only a switch.</dd>
+        <dt>What it does here</dt>
+        <dd>It tells the Node whether water is flowing into the tank right now. The Pro Mini simply checks whether the two wires are connected to each other.</dd>
+        <dt>Why this one</dt>
+        <dd>There is no electronics inside it, so there is nothing to fail and nothing to power. Compared with a turbine flow meter it tells you less — flowing or not flowing, rather than how many litres per minute — but for this device that is all the Hub needs, and it costs no battery at all.</dd>
+        <dt>Watch out</dt>
+        <dd class="note">The photo is an <strong>HT-60 marked AC 220 V</strong>. Ours is the <strong>WY-90 marked DC 12~24 V</strong> — same brass body and red cap, different label. That "DC 12~24&nbsp;V" is the <em>most</em> it may switch, not the least; we switch it at 3.6&nbsp;V and a few microamps, which is electrically fine.</dd>
+        <dd class="warn">But there is a real catch. Contacts left switching almost no current grow a thin oxide film that stops them conducting even when closed. The fix is to push a larger current through the contacts briefly, just before reading them — that is what the extra resistor from D5 is for in the build. <strong>Fit it in the pipe with the yellow arrow pointing the way the water flows.</strong> Backwards, it will not actuate.</dd>
+      </dl>
+    </div>
+  </article>
+</div>
+
+<!-- ================= SMALL ================= -->
+<div class="group" id="g-small">
+  <div class="group-head">
+    <h2>Resistors and capacitors</h2>
+    <span>Everywhere</span>
+  </div>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{R47K}}" alt="A through-hole carbon film resistor with yellow, violet, red and gold colour bands">
+      <span class="tile-tag">Photo · 4.7 kΩ</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>Resistors</h3>
+        <div class="specs"><span>¼ W</span><span>5 % (gold band)</span><span>7 values</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A part that resists current. The coloured bands tell you the value — two digits, then how many zeros, then a gold band for the tolerance. Read them with the gold band on the right.</dd>
+        <dt>What they do here</dt>
+        <dd>Three different jobs, and it helps to know which is which when you are reading the build sheet: <strong>holding a wire at a known level</strong> when nothing else is driving it, <strong>limiting current</strong> so a part or a pin cannot be damaged, and <strong>setting a timing</strong> together with a capacitor.</dd>
+        <dt>Why these values</dt>
+        <dd>Full breakdown in the table below. The one worth understanding is the 470&nbsp;kΩ, because it is doing something clever with almost nothing.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <div class="tbl-scroll">
+    <table>
+      <thead>
+        <tr><th>Value</th><th>Bands</th><th>Qty</th><th>What it is doing</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td class="v">100 Ω</td>
+          <td><span class="bands"><i style="background:#7B4B27"></i><i style="background:#111"></i><i style="background:#7B4B27"></i><i style="background:#C9A227"></i></span>brn blk brn</td>
+          <td class="qty">6</td>
+          <td>One on every signal wire that leaves the board or crosses between chips. If something goes wrong at the far end of a cable, this limits the current to something the microcontroller pin can survive.</td>
+        </tr>
+        <tr>
+          <td class="v">330 Ω</td>
+          <td><span class="bands"><i style="background:#D2691E"></i><i style="background:#D2691E"></i><i style="background:#7B4B27"></i><i style="background:#C9A227"></i></span>org org brn</td>
+          <td class="qty">1</td>
+          <td>Feeds the flow-switch line from pin A2. Small enough to push a real current through the contacts and break the oxide film.</td>
+        </tr>
+        <tr>
+          <td class="v">1 kΩ</td>
+          <td><span class="bands"><i style="background:#7B4B27"></i><i style="background:#111"></i><i style="background:#C0392B"></i><i style="background:#C9A227"></i></span>brn blk red</td>
+          <td class="qty">2</td>
+          <td>One sets the LED brightness. One sits between the memory chip and the MOSFET gate, so a fault cannot dump current straight into either.</td>
+        </tr>
+        <tr>
+          <td class="v">4.7 kΩ</td>
+          <td><span class="bands"><i style="background:#D4C43A"></i><i style="background:#7B4FA0"></i><i style="background:#C0392B"></i><i style="background:#C9A227"></i></span>yel vio red</td>
+          <td class="qty">1</td>
+          <td>Required by the DS18B20. Holds the shared data line high between pulses. Without it the temperature sensors do nothing.</td>
+        </tr>
+        <tr>
+          <td class="v">100 kΩ</td>
+          <td><span class="bands"><i style="background:#7B4B27"></i><i style="background:#111"></i><i style="background:#D4C43A"></i><i style="background:#C9A227"></i></span>brn blk yel</td>
+          <td class="qty">1</td>
+          <td>Lets the Pro Mini read the on/off state on A1 without loading the memory chip's output.</td>
+        </tr>
+        <tr>
+          <td class="v">470 kΩ</td>
+          <td><span class="bands"><i style="background:#D4C43A"></i><i style="background:#7B4FA0"></i><i style="background:#D4C43A"></i><i style="background:#C9A227"></i></span>yel vio yel</td>
+          <td class="qty">1</td>
+          <td>Pulls the reed line down. The unusually large value is the point — see the note below.</td>
+        </tr>
+        <tr>
+          <td class="v">1 MΩ</td>
+          <td><span class="bands"><i style="background:#7B4B27"></i><i style="background:#111"></i><i style="background:#3B7A3B"></i><i style="background:#C9A227"></i></span>brn blk grn</td>
+          <td class="qty">3</td>
+          <td>Holds a wire at a known level while using almost no current. On the MOSFET gate it guarantees the device is off if nothing is driving it. On the flow line it holds the input high until the switch pulls it down.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout">
+    <h4>The 470 kΩ is doing two jobs at once</h4>
+    <p>When metal contacts close they do not close once — they bounce, making and breaking a few times over a millisecond or two. A memory chip is fast enough to see every one of those bounces as a separate touch, so one pass of the magnet could flip the state three or four times and land wherever it likes.</p>
+    <p>Together with the 100&nbsp;nF next to it, the 470&nbsp;kΩ sets how quickly the line can recover after the contact opens: about 47&nbsp;ms. The bounces all happen well inside that window, so the chip sees exactly one clean change. The original 10&nbsp;kΩ gave about 1&nbsp;ms, which is right in the middle of the bouncing.</p>
+    <p>The second job is free: when the magnet is left sitting on the reed, the current flowing through that resistor drops from about 360&nbsp;µA to about 7.7&nbsp;µA. On a two-year battery budget that is not a small difference.</p>
+  </div>
+
+  <article class="part" style="margin-top:44px">
+    <div class="tile">
+      <img src="{{CER104}}" alt="A small orange ceramic disc capacitor printed 104 with two straight legs">
+      <span class="tile-tag">Photo · 100 nF</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>100 nF ceramic × 9</h3>
+        <div class="specs"><span>printed 104</span><span>no polarity</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A tiny store of electricity. This kind is ceramic — a small disc or blob with two straight legs and <strong>no plus or minus</strong>, so it cannot go in backwards. The printed number is the value: <span style="font-family:'JetBrains Mono',monospace">104</span> means 10 followed by 4 zeros in picofarads, which is 100&nbsp;nF.</dd>
+        <dt>What it does here</dt>
+        <dd>One sits next to every chip, right up against its power pins. When a chip suddenly needs a gulp of current, the wire back to the battery is too slow to deliver it — a wire has inductance, and current cannot change instantly in it. The capacitor is a few millimetres away and supplies that gulp immediately, then refills slowly.</dd>
+        <dt>Why nine of them</dt>
+        <dd>One per chip power pin, one across the reed line for the timing job described above, and one on each sensor connector. They are the cheapest part in the build and the most common cause of strange intermittent faults when they are left out.</dd>
+        <dt>Watch out</dt>
+        <dd>Cut the legs as short as you can. A capacitor on long legs is a capacitor with an inductor in series with it, which undoes most of the point.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      {{SVG_TANT}}
+      <span class="tile-tag">Drawing · tantalum</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>10 µF × 2 and 100 µF × 1</h3>
+        <div class="specs"><span>106 / 107</span><span>polarity matters</span><span>at the radio</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>The same idea as the 100&nbsp;nF but a hundred to a thousand times larger, so they can supply a much bigger gulp for much longer. At these values the part is usually a tantalum block or an aluminium can, and <strong>both have a plus and a minus end</strong>.</dd>
+        <dt>What they do here</dt>
+        <dd>Two of them sit right at the radio socket, and one on the green supply. This is the transmit burst problem: the radio wants up to 120&nbsp;mA for a few milliseconds, and the cells can only supply about 50&nbsp;mA continuously. The capacitors hold that energy ready and hand it over instantly, then refill from the battery over the following seconds. Without them the supply collapses every time the radio speaks.</dd>
+        <dt>Why tantalum for the 100 µF</dt>
+        <dd>A ceramic capacitor loses capacitance when voltage is applied across it. A 100&nbsp;µF 6.3&nbsp;V ceramic sitting at 3.6&nbsp;V can lose 50–70&nbsp;% of its value and behave like a 30–50&nbsp;µF part. Tantalum does not do this — its value stays where the label says. The tantalum you already have gives the full 100&nbsp;µF. A ceramic would work too if you buy it rated 16&nbsp;V or 25&nbsp;V, where the loss is much smaller.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn"><strong>The stripe means the opposite thing on the two types.</strong> On an aluminium can the stripe marks <strong>minus</strong>. On a tantalum block the bar marks <strong>plus</strong>. Read what kind of capacitor it is first, then read the stripe. A tantalum fitted backwards fails as a short circuit and can burn — it is the one part in this build where getting it wrong does more than simply not work.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{CAN}}" alt="A black cylindrical aluminium electrolytic capacitor with two legs and printed value markings">
+      <span class="tile-tag">Photo — see note</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>Aluminium electrolytic — the other style</h3>
+        <div class="specs"><span>stripe = MINUS</span><span>long leg = plus</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>The metal can style. Down one side there is a printed stripe, usually with minus signs in it, and that side is the <strong>minus</strong> leg. On a new uncut part the longer leg is plus.</dd>
+        <dt>Why it is here</dt>
+        <dd>Shown so you can recognise the difference. An aluminium can will work for the 10&nbsp;µF and the 100&nbsp;µF if that is what you can get.</dd>
+        <dt>Watch out</dt>
+        <dd class="note">The photo is a <strong>2200&nbsp;µF 25&nbsp;V</strong> — a part we already have but are <em>not</em> fitting. It is far larger than anything this circuit needs, and its physical size and leakage make it the wrong choice here.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <div class="callout">
+    <h4>Surface-mount is fine, within limits</h4>
+    <p>A 1206 or 1210 part is 3.2&nbsp;mm long, and perfboard holes are 2.54&nbsp;mm apart, so it lies straight across two neighbouring pads and solders directly — no wires needed. Tantalum case C (6032) and case D (7343) fit the same way. 0805 is workable with care; 0603 is fiddly; do not attempt 0402 by hand.</p>
+  </div>
+</div>
+
+<!-- ================= CONNECTORS ================= -->
+<div class="group" id="g-conn">
+  <div class="group-head">
+    <h2>Connectors</h2>
+    <span>Stages 10 – 12, 15</span>
+  </div>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{JST4}}" alt="A white JST XH four-pin right-angle header with square metal pins and a keyed shroud">
+      <span class="tile-tag">Photo · 4-pin header</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>JST XH connectors</h3>
+        <div class="specs"><span>2.54 mm pitch</span><span>keyed</span><span>2 / 3 / 4 pin</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>A two-piece connector. The white shrouded header solders to the board; the matching housing goes on the cable with a crimped metal pin on each wire. There is a ramp along one side of the shroud and a matching slot in the housing, so it only goes together one way.</dd>
+        <dt>What it does here</dt>
+        <dd>Every cable that enters the board goes through one: 4-pin for the ultrasonic, 3-pin for the temperature probes, 2-pin for the flow switch, 2-pin for the battery pack.</dd>
+        <dt>Why connectors instead of soldering the cables straight on</dt>
+        <dd>A wire soldered directly to the board means that replacing a failed sensor is a soldering job — on a roof, in the sun, with the enclosure open. A connector makes it a thirty-second swap. The keying also means a cable physically cannot be plugged in backwards, which removes a whole category of mistake.</dd>
+        <dt>Watch out</dt>
+        <dd class="warn">Crimping is where the errors happen. A crimp that looks fine can pull out later or make intermittent contact. <strong>Pull-test every crimped pin by hand before you push it into the housing</strong>, and check the wire colours against your own labelling — the keying stops you plugging a cable in backwards, but it cannot stop you crimping the wrong wire into the wrong slot.</dd>
+      </dl>
+    </div>
+  </article>
+
+  <article class="part">
+    <div class="tile">
+      <img src="{{JSTHOUSE}}" alt="A white JST XH two-pin cable housing with a locking ramp slot">
+      <span class="tile-tag">Photo · housing</span>
+    </div>
+    <div>
+      <div class="part-head">
+        <h3>The cable side</h3>
+        <div class="specs"><span>housing + crimp pins</span></div>
+      </div>
+      <dl>
+        <dt>What it is</dt>
+        <dd>The half that goes on the cable. Each wire gets a small metal pin crimped onto it, and each pin clicks into a slot in the plastic housing.</dd>
+        <dt>Watch out</dt>
+        <dd>A pin pushed in far enough clicks and cannot be pulled back out by hand. If it does come out, the little barb was bent during crimping — start that one again rather than forcing it.</dd>
+      </dl>
+    </div>
+  </article>
+</div>
+
+<!-- ================= NOT FITTING ================= -->
+<div class="group" id="g-not">
+  <div class="group-head">
+    <h2>Parts on the bench that are not going in</h2>
+    <span>And why</span>
+  </div>
+
+  <div class="tbl-scroll" style="margin-top:0">
+    <table>
+      <thead><tr><th>Part</th><th>Replaced by</th><th>Reason</th></tr></thead>
+      <tbody>
+        <tr>
+          <td class="v">CD4013BE</td>
+          <td class="v">74HC74</td>
+          <td>Needs 3&nbsp;V minimum against the 74HC74's 2&nbsp;V. Near the end of the battery's life, during a radio transmit burst, that gap is the difference between remembering the on/off state and forgetting it.</td>
+        </tr>
+        <tr>
+          <td class="v">2200 µF can</td>
+          <td class="v">100 µF</td>
+          <td>Twenty-two times more capacitance than the radio burst needs, physically huge, and its leakage current runs continuously against a two-year battery budget.</td>
+        </tr>
+        <tr>
+          <td class="v">Blue LED</td>
+          <td class="v">Red LED</td>
+          <td>Needs about 3.0–3.2&nbsp;V to light. As the cells age it dims and then stops working while the device is still fine. Red lights from about 1.8&nbsp;V.</td>
+        </tr>
+        <tr>
+          <td class="v">10 kΩ</td>
+          <td class="v">470 kΩ</td>
+          <td>Gives a 1&nbsp;ms recovery on the reed line, right in the middle of the contact bounce. It also wastes about 360&nbsp;µA whenever the magnet is held on the reed.</td>
+        </tr>
+        <tr>
+          <td class="v">Pro Mini regulator<br>and power LED</td>
+          <td class="v">nothing</td>
+          <td>Already removed. Both drew current continuously — the LED for no reason at all, the regulator because the board runs directly from the battery and does not need it.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+</section>
+
+<section>
+  <div class="sec-head prose">
+    <p class="eyebrow">Not settled yet</p>
+    <h2>The two things still open</h2>
+    <p>Everything above is decided. These two are not, and the full record lives in the hardware issues file.</p>
+  </div>
+
+  <div class="open-list">
+    <div class="open-item">
+      <div class="open-id">HW-003</div>
+      <div>
+        <h4>The battery pack is not built yet</h4>
+        <p>The design is agreed: one 1N5819 on each cell's plus terminal, both feeding a 0.5&nbsp;A fast-blow fuse, then out to the red wire. Sealed and non-serviceable — nobody opens it to swap one cell. It stays a blocker until the pack physically exists and reads 3.6&nbsp;V across its two wires.</p>
+      </div>
+    </div>
+    <div class="open-item">
+      <div class="open-id">HW-004</div>
+      <div>
+        <h4>There is no ground plane</h4>
+        <p>The PCB has no copper pour and no vias, so return current from the radio has to find its way back along a thin trace. At 433&nbsp;MHz a 100&nbsp;mm trace with no plane under it looks like hundreds of ohms to the return current, instead of a couple of ohms. On the hand-soldered board a soldered mesh on the top layer gets most of the benefit. The two ground plane documents cover what it is and how to do it.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout hot">
+    <h4>Still needed from the bench</h4>
+    <p>Is the WY-90 normally open or normally closed, and what is the minimum flow rate that actuates it? Is the D13 LED still fitted on the Pro Mini? Does the Pro Mini have a crystal or a ceramic resonator?</p>
+    <p>And five measurements before the box is sealed: sleep current, current with the magnet held on the reed, the voltage on the memory chip's supply pin during a transmit after the cells have sat idle a week, the ultrasonic blind zone swept from 2&nbsp;cm outward in 5&nbsp;mm steps, and the transducer centre-to-centre spacing with callipers.</p>
+  </div>
+</section>
+
+<footer>
+  <div class="prose">
+    <p>Photographs are the manufacturer and supplier images kept in the project folder. Three of them show a near-identical part rather than the exact one we are fitting, and each of those is flagged on its own card — the 14-pin chip, the flow switch and the LED.</p>
+    <p>Values quoted come from the SX1278, IRLZ44N, 74HC74, LS14500 and DS18B20 datasheets and from the build sheet. Anything measured rather than specified is listed above as still needed.</p>
+  </div>
+</footer>
+
+</div>
