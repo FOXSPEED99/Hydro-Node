@@ -10,17 +10,19 @@ Work top to bottom. Every step connects to something already on the board.
 
 **Reuse:** Pro Mini 3.3 V (LED + regulator already removed) · Ra-02 · reed switch · IRLZ44N · 1 MΩ · 1 kΩ · 4.7 kΩ · 100 kΩ · 4 × 100 nF · JST connectors · RCWL-1670 · WY-90 · DS18B20 · 2 × LS14500
 
-**Buy:** 3 × 1N5819 · 0.5 A fuse + holder · 1 × DS18B20 · 1 red LED · 1 × 470 kΩ · 2 × 1 MΩ · 1 × 1 kΩ · 6 × 100 Ω · 1 × 330 Ω · 5 × 100 nF · 2 × 10 µF · 1 × 100 µF
+**Buy:** 3 × 1N5819 · 0.5 A fuse + holder · 1 × DS18B20 · 1 red LED · 1 × 470 kΩ · 2 × 1 MΩ · 1 × 1 kΩ · 6 × 100 Ω · 1 × 330 Ω · 5 × 100 nF · 2 × 10 µF · 1 × 100 µF (tantalum or electrolytic)
 
 **Also get:** wire in **4 colours** — red, black, blue, green.
 
 ### The capacitors — not all the same type
 
-| Value | Type | Polarity |
+| Value | What to actually buy | Polarity |
 |---|---|---|
-| **100 nF** × 9 | **Ceramic.** Small blue or yellow disc, printed **104** | None. Either leg either way |
-| **10 µF** × 2 | Ceramic, aluminium electrolytic **or tantalum** — any is fine | **Yes**, unless it is ceramic |
-| **100 µF** × 1 | Ceramic, aluminium electrolytic **or tantalum** — any is fine | **Yes**, unless it is ceramic |
+| **100 nF** × 9 | **Ceramic disc**, printed **104**. The ones you already have | None |
+| **10 µF** × 2 | Ceramic disc marked **106** if the shop has it, otherwise a small **electrolytic can** | Yes, unless ceramic |
+| **100 µF** × 1 | **Tantalum** (marked **107**) or an **electrolytic can**. Do not go looking for ceramic — see below | Yes |
+
+**Do not hunt for a ceramic 100 µF.** At that value ceramic is made almost only as surface-mount. The through-hole versions are specialty distributor parts, some discontinued, and no ordinary shop stocks them. A tantalum or an electrolytic is the normal choice here and works fine.
 
 **Reading the code on a ceramic disc:** the first 2 digits, then that many zeros, in picofarads.
 **104** = 10 + 4 zeros = 100000 pF = **100 nF** ← the one you already have
