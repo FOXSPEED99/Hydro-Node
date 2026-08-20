@@ -211,6 +211,59 @@ Record the result against **HW-004** in the issue tracker.
 
 ---
 
+## APPENDIX — DOING THIS ON A SOLDERED PROTOTYPE BOARD
+
+For the perfboard build that comes before ordering the PCB. Same idea, different technique.
+
+### It works, and a mesh is as good as solid copper here
+
+A ground plane does not have to be solid — it only needs no openings large enough to matter against the wavelength. At 433 MHz, λ = 69 cm:
+
+| Mesh opening | Fraction of λ | Verdict |
+|---|---|---|
+| 2.54 mm — every pad bridged | λ/273 | Indistinguishable from solid |
+| **10 mm — every 4th pad** | **λ/69** | **Still indistinguishable** |
+| 25 mm | λ/28 | Starting to matter |
+
+Openings below about **λ/20 = 35 mm** behave as solid copper.
+
+> **So do not bridge every pad.** On a 60 × 80 mm board that is ~1500 joints. A **10 mm grid is ~96 joints** and is electrically the same thing.
+
+### Solder is a perfectly good conductor for this
+
+| | Resistivity | Skin depth at 433 MHz |
+|---|---|---|
+| Copper | 1.7 µΩ·cm | 3.1 µm |
+| Solder | 14.5 µΩ·cm | 9.2 µm |
+
+Solder is 8.6× more resistive, but a bridge roughly 1 mm wide × 0.5 mm thick has **14× the cross-section** of a 1 mm × 35 µm PCB trace — so it ends up **1.7× lower resistance** than the trace it replaces. And for RF the quantity that matters is **inductance**, which is set by geometry rather than material, so the mesh gets essentially the full benefit of a plane.
+
+### ⚠️ Two ways to get this badly wrong
+
+**1. Merging the two grounds.** GND_SW and GND_RAW are separated by Q1 — that separation *is* the power switch. Sweep one mesh across the whole board tying both together and **the device can never turn off.** Mesh **GND_SW only**; keep U1 / S1 / Q1 / the battery connector as a separate island with a visible gap.
+
+**2. Using the single-sided board.** The brown phenolic board has copper on one face and unplated holes: the mesh would have to share a face with the signal traces (constant short risk) and there is no way to get ground to the component side. **Use the green double-sided board.**
+
+Before relying on it, **verify the holes are plated through**: multimeter on continuity, probe the top pad and the bottom pad of the same hole. If it beeps, ground pins reach a top-side mesh automatically and the prototype mirrors the real PCB plan — signal traces on the bottom, mesh on top. If it does not beep, every ground hole needs its own wire link.
+
+### Order of work — mesh first, not last
+
+Running solder bridges between components and signal traces that are already in place is where accidental shorts come from.
+
+1. **Lay the ground mesh first**, on the top (component) side, before placing any parts.
+2. Place components — ground pins drop into the mesh through the plated holes.
+3. Run signal traces on the bottom.
+
+**Faster alternative:** adhesive **copper foil tape** on the component side, notched around the pads that are not ground. One piece instead of ~96 joints, and it is genuinely solid rather than a mesh.
+
+### What the prototype can and cannot tell you
+
+A perfboard will never match a real PCB for RF, whatever you do to it. Its job is to prove the circuit **functions**.
+
+> Do not use the prototype to judge whether the ground plane was worth it. That comparison is **PCB rev A vs PCB rev B** (Phase 9). If the perfboard works fine without a mesh, that says nothing about whether the PCB needs one.
+
+---
+
 ## IF YOU GET STUCK
 
 Tell me which phase, what you clicked, and what the screen says. The two places people most often trip:
