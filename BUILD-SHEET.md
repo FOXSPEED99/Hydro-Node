@@ -1,320 +1,425 @@
 # HYDRO NODE — BUILD SHEET
 
+Work top to bottom. Every step connects only to something already on the board. Nothing is left loose to come back to.
+
 ---
 
-## 1. REMOVE — do not fit
+## PARTS
 
-| Part |
-|---|
-| CD4013BE |
-| C3 — 2200 µF electrolytic |
-| Blue LED |
-| R5 — 220 Ω / 330 Ω |
-| R3 — 10 kΩ |
+### Remove — do not fit
+CD4013BE · C3 2200 µF electrolytic · blue LED · the 220 Ω / 330 Ω LED resistor · the 10 kΩ
 
-## 2. REUSE from the old build
+### Reuse
+Pro Mini 3.3 V (LED + regulator already removed) · Ra-02 · reed switch · IRLZ44N · 1 MΩ · 1 kΩ · 4.7 kΩ · 100 kΩ · 4 × 100 nF · JST connectors · RCWL-1670 · WY-90 · DS18B20 · 2 × LS14500
 
-Arduino Pro Mini 3.3 V (LED + regulator already removed) · Ra-02 · reed switch · IRLZ44N · 1 MΩ · 1 kΩ · 4.7 kΩ · 100 kΩ · 4 × 100 nF · all JST connectors · RCWL-1670 · WY-90 · DS18B20 · 2 × LS14500
+### Buy
+3 × 1N5819 · 0.5 A fuse + holder · 1 × DS18B20 · 1 red LED · 1 × 470 kΩ · 2 × 1 MΩ · 1 × 1 kΩ · 6 × 100 Ω · 1 × 330 Ω · 5 × 100 nF · 2 × 10 µF · 1 × 100 µF
 
-## 3. BUY
+---
 
-| Qty | Part |
+# STAGE 1 — BATTERY PACK
+
+Build this off the board. Nothing else exists yet.
+
+**1.1** — Take a **1N5819**. One end has a **stripe**.
+- plain end → **Cell 1 positive**
+- striped end → **fuse leg 1**
+
+**1.2** — Take the second **1N5819**.
+- plain end → **Cell 2 positive**
+- striped end → **fuse leg 1** — the same blob as 1.1
+
+**1.3** — Join **Cell 1 negative** and **Cell 2 negative** together. Solder a **black wire** to that blob.
+
+**1.4** — Solder a **red wire** to **fuse leg 2**.
+
+**TEST NOW:** meter across red and black. Should read about **3.6 V**, red positive. If it reads 0, a diode is backwards.
+
+Put the pack aside.
+
+---
+
+# STAGE 2 — RAILS AND HOLES
+
+**2.1** — Run **4 bare wires** across the board. Label each with tape.
+
+| Rail | Where it goes |
 |---|---|
-| 3 | 1N5819 diode |
-| 1 | 0.5 A fuse + holder |
-| 1 | DS18B20 — second one |
-| 1 | Red or yellow LED |
-| 1 | 470 kΩ |
-| 2 | 1 MΩ |
-| 1 | 1 kΩ |
-| 6 | 100 Ω |
-| 1 | 330 Ω |
-| 5 | 100 nF ceramic |
-| 2 | 10 µF ceramic |
-| 1 | 100 µF ceramic |
+| **RAIL-BAT+** | one long edge |
+| **RAIL-BAT−** | next to it |
+| **RAIL-SW** | the opposite edge |
+| **RAIL-LATCH** | short, near where the 74HC74 will sit |
+
+**RAIL-BAT− and RAIL-SW must never touch.**
+
+**2.2** — Pick **5 empty holes** and mark them with a pen: **H1, H2, H3, H4, H5**.
+
+Each will end up with this many legs. Count them at the end:
+
+| Hole | Final leg count | Put it near |
+|---|---|---|
+| H1 | 3 | the MOSFET |
+| H2 | 4 | the 74HC74 |
+| H3 | 5 | the reed switch |
+| H4 | 3 | the temperature connector |
+| H5 | 5 | the flow connector |
 
 ---
 
-## 4. FIRST — BUILD 4 RAILS
+# STAGE 3 — 74HC74 CHIP
 
-Run 4 bare wires across the board. Everything else solders onto one of these. Label them with tape.
+**3.1** — Place the chip. It has a **notch at one end**. With the notch at the top, **pin 1 is top-left**, and pins count **down the left side** (1–7), then **up the right side** (8–14).
 
-| Rail | What it is |
+Now every pin, one at a time:
+
+| Step | Pin | Solder it to |
+|---|---|---|
+| 3.2 | pin 14 | **RAIL-LATCH** |
+| 3.3 | pin 7 | **RAIL-BAT−** |
+| 3.4 | pin 4 | **RAIL-LATCH** |
+| 3.5 | pin 10 | **RAIL-LATCH** |
+| 3.6 | pin 13 | **RAIL-LATCH** |
+| 3.7 | pin 11 | **RAIL-BAT−** |
+| 3.8 | pin 12 | **RAIL-BAT−** |
+| 3.9 | pin 2 | **pin 6** — a short wire across the chip |
+| 3.10 | pin 3 | **H3** |
+| 3.11 | pin 1 | **H2** |
+| 3.12 | pins 8 and 9 | leave empty |
+| 3.13 | pin 5 | leave for now — stage 5 brings a wire to it |
+
+Pins **4, 10, 13** go to **RAIL-LATCH**. Not to ground. Check this before moving on.
+
+> **H2 now has 1 leg** (pin 1). **H3 now has 1 leg** (pin 3).
+
+---
+
+# STAGE 4 — POWER FOR THE LATCH
+
+**4.1** — Third **1N5819**.
+- plain end → **RAIL-BAT+**
+- striped end → **RAIL-LATCH**
+
+**4.2** — **10 µF ceramic**. No polarity.
+- one leg → **RAIL-LATCH**
+- other leg → **RAIL-BAT−**
+
+**4.3** — **100 nF**.
+- one leg → **RAIL-LATCH**
+- other leg → **RAIL-BAT−**
+
+---
+
+# STAGE 5 — MOSFET
+
+**5.1** — **IRLZ44N**. Hold it with the **printed face toward you** and the **legs pointing down**.
+- **left leg** = gate
+- **middle leg** = drain — also connected to the metal tab
+- **right leg** = source
+
+**5.2** — **middle leg** → **RAIL-SW**
+
+**5.3** — **right leg** → **RAIL-BAT−**
+
+**5.4** — **left leg** → **H1**
+
+**5.5** — **1 MΩ**.
+- one leg → **H1**
+- other leg → **RAIL-BAT−**
+
+**5.6** — **1 kΩ**.
+- one leg → **H1**
+- other leg → **74HC74 pin 5**
+
+> **H1 is now finished — 3 legs.** Count them: MOSFET left leg, 1 MΩ, 1 kΩ.
+
+---
+
+# STAGE 6 — RESET PARTS
+
+**6.1** — **1 MΩ**.
+- one leg → **H2**
+- other leg → **RAIL-LATCH**
+
+**6.2** — **100 nF**.
+- one leg → **H2**
+- other leg → **RAIL-BAT−**
+
+> **H2 now has 3 legs.** One more arrives in stage 14.
+
+---
+
+# STAGE 7 — REED SWITCH
+
+**7.1** — reed **leg 1** → **RAIL-LATCH**
+
+**7.2** — **100 Ω**.
+- one leg → reed **leg 2**
+- other leg → **H3**
+
+**7.3** — **470 kΩ**.
+- one leg → **H3**
+- other leg → **RAIL-BAT−**
+
+**7.4** — **100 nF**.
+- one leg → **H3**
+- other leg → **RAIL-BAT−**
+
+> **H3 now has 4 legs.** One more arrives in stage 14.
+
+---
+
+# STAGE 8 — TEST 1: does the power switch work?
+
+Nothing else is on the board yet. This tests the latch on its own.
+
+**Meter first, no power:**
+
+| Probes on | Must read |
 |---|---|
-| **RAIL-BAT+** | battery plus, after the fuse |
-| **RAIL-BAT−** | battery minus |
-| **RAIL-SW** | switched ground — this is the MOSFET's middle leg |
-| **RAIL-LATCH** | a small rail, only 6 things connect to it |
+| RAIL-BAT− and RAIL-SW | **no beep** |
+| RAIL-BAT+ and RAIL-BAT− | no beep |
+| 74HC74 pin 4 and RAIL-LATCH | beep |
+| 74HC74 pin 10 and RAIL-LATCH | beep |
+| 74HC74 pin 13 and RAIL-LATCH | beep |
+| H3 and RAIL-BAT− | 470 kΩ |
 
-> **RAIL-BAT− and RAIL-SW must never touch each other.**
+**Then power.** Bench supply 3.6 V, limit 50 mA — or the battery pack from stage 1.
+Red to **RAIL-BAT+**, black to **RAIL-BAT−**.
 
----
-
-## 5. THEN — 5 JUNCTION POINTS
-
-These are not rails. Each is one solder blob on an empty hole where several legs meet. Make the blob first, then bring legs to it.
-
-| Junction | Legs that meet here (count them when done) |
+| Do this | Should happen |
 |---|---|
-| **J-GATE** | 3 legs — MOSFET gate, 1 MΩ, 1 kΩ |
-| **J-RESET** | 4 legs — 74HC74 pin 1, 1 MΩ, 100 nF, 100 kΩ |
-| **J-REED** | 5 legs — 100 Ω from reed, 470 kΩ, 100 nF, wire to 74HC74 pin 3, 100 Ω to A0 |
-| **J-TEMP** | 3 legs — 4.7 kΩ, 100 Ω from D4, wire to temp connector DATA pin |
-| **J-FLOW** | 5 legs — wire from flow connector, 1 MΩ, 100 nF, 100 Ω from D5, 330 Ω from A2 |
+| Connect power | **RAIL-SW reads ≈ 3.6 V** (device off) |
+| Magnet near the reed | **RAIL-SW drops to ≈ 0 V** (device on) |
+| Take the magnet away | stays at 0 V |
+| Magnet near again | back to ≈ 3.6 V |
+| Repeat 10 times | one change per approach, every time |
+
+**Do not carry on until this passes.** Everything after this depends on it.
+
+Disconnect power.
 
 ---
 
-## 6. WIRE LIST
+# STAGE 9 — TWO RAIL CAPACITORS
 
-Tick each one. "Leg 1 / leg 2" just means the two ends of that part — resistors and ceramic caps have no polarity.
+**9.1** — **100 nF**: one leg → **RAIL-BAT+**, other leg → **RAIL-BAT−**
 
-### Battery pack
+**9.2** — **100 nF**: one leg → **RAIL-BAT+**, other leg → **RAIL-SW**
 
-| # | Solder this | To this |
-|---|---|---|
-| 1 | Cell 1 **+** | 1N5819 **plain end** (no stripe) |
-| 2 | that diode's **striped end** | fuse leg 1 |
-| 3 | Cell 2 **+** | second 1N5819 **plain end** |
-| 4 | that diode's **striped end** | fuse leg 1 — same blob as #2 |
-| 5 | fuse leg 2 | **RAIL-BAT+** |
-| 6 | Cell 1 **−** | **RAIL-BAT−** |
-| 7 | Cell 2 **−** | **RAIL-BAT−** |
+---
 
-### Latch rail
+# STAGE 10 — ULTRASONIC CONNECTOR (4-pin)
 
-| # | Solder this | To this |
-|---|---|---|
-| 8 | **RAIL-BAT+** | third 1N5819 **plain end** |
-| 9 | that diode's **striped end** | **RAIL-LATCH** |
-| 10 | 10 µF leg 1 | **RAIL-LATCH** |
-| 11 | 10 µF leg 2 | **RAIL-BAT−** |
-| 12 | 100 nF leg 1 | **RAIL-LATCH** |
-| 13 | 100 nF leg 2 | **RAIL-BAT−** |
+The RCWL-1670 module's pads read left to right: **GND, RX, TX, +5V**.
+Decide now which connector pin carries which, and write it on tape. Below they are called by function.
 
-### MOSFET — IRLZ44N, printed side facing you, legs pointing down
+**10.1** — Place the 4-pin connector.
 
-Left leg = **gate**. Middle leg + metal tab = **drain**. Right leg = **source**.
+**10.2** — the **+5V** pin → **RAIL-BAT+**
 
-| # | Solder this | To this |
-|---|---|---|
-| 14 | MOSFET **middle** leg | **RAIL-SW** |
-| 15 | MOSFET **right** leg | **RAIL-BAT−** |
-| 16 | MOSFET **left** leg | **J-GATE** |
-| 17 | 1 MΩ leg 1 | **J-GATE** |
-| 18 | 1 MΩ leg 2 | **RAIL-BAT−** |
-| 19 | 1 kΩ leg 1 | **J-GATE** |
-| 20 | 1 kΩ leg 2 | **74HC74 pin 5** |
+**10.3** — the **GND** pin → **RAIL-SW**
 
-### 74HC74 — notch at the top, pin 1 is top-left, count down the left side
+**10.4** — **100 nF**: one leg → the **+5V** pin, other leg → the **GND** pin
 
-| # | Solder this | To this |
-|---|---|---|
-| 21 | pin 14 | **RAIL-LATCH** |
-| 22 | pin 7 | **RAIL-BAT−** |
-| 23 | pin 4 | **RAIL-LATCH** |
-| 24 | pin 10 | **RAIL-LATCH** |
-| 25 | pin 13 | **RAIL-LATCH** |
-| 26 | pin 11 | **RAIL-BAT−** |
-| 27 | pin 12 | **RAIL-BAT−** |
-| 28 | pin 2 | **pin 6** — short wire across the chip |
-| 29 | pin 3 | **J-REED** |
-| 30 | pin 1 | **J-RESET** |
-| 31 | 1 MΩ leg 1 | **J-RESET** |
-| 32 | 1 MΩ leg 2 | **RAIL-LATCH** |
-| 33 | 100 nF leg 1 | **J-RESET** |
-| 34 | 100 nF leg 2 | **RAIL-BAT−** |
-| 35 | 100 kΩ leg 1 | **J-RESET** |
-| 36 | 100 kΩ leg 2 | **Pro Mini A1** |
-| — | pins 8 and 9 | leave empty |
+> The **RX** and **TX** pins stay empty. Stage 14 brings wires to them.
 
-Pins 4, 10 and 13 go to **RAIL-LATCH**. Not to ground.
+---
 
-### Reed switch
+# STAGE 11 — TEMPERATURE CONNECTOR (3-pin)
 
-| # | Solder this | To this |
-|---|---|---|
-| 37 | reed leg 1 | **RAIL-LATCH** |
-| 38 | reed leg 2 | 100 Ω leg 1 |
-| 39 | that 100 Ω leg 2 | **J-REED** |
-| 40 | 470 kΩ leg 1 | **J-REED** |
-| 41 | 470 kΩ leg 2 | **RAIL-BAT−** |
-| 42 | 100 nF leg 1 | **J-REED** |
-| 43 | 100 nF leg 2 | **RAIL-BAT−** |
-| 44 | 100 Ω leg 1 | **J-REED** |
-| 45 | that 100 Ω leg 2 | **Pro Mini A0** |
+Three pins: **VCC**, **GND**, **DATA**. Write them on tape.
 
-### Arduino Pro Mini — power
+**11.1** — Place the 3-pin connector.
 
-| # | Solder this | To this |
-|---|---|---|
-| 46 | Pro Mini **VCC** | **RAIL-BAT+** |
-| 47 | Pro Mini **GND** | **RAIL-SW** |
-| 48 | 100 nF leg 1 | Pro Mini **VCC** pin |
-| 49 | 100 nF leg 2 | Pro Mini **GND** pin |
-| — | Pro Mini **RAW** | leave empty |
+**11.2** — the **GND** pin → **RAIL-SW**
 
-### Two more capacitors on the main rails
+**11.3** — the **DATA** pin → **H4**
 
-| # | Solder this | To this |
-|---|---|---|
-| 50 | 100 nF leg 1 | **RAIL-BAT+** |
-| 51 | 100 nF leg 2 | **RAIL-BAT−** |
-| 52 | 100 nF leg 1 | **RAIL-BAT+** |
-| 53 | 100 nF leg 2 | **RAIL-SW** |
+**11.4** — **4.7 kΩ**.
+- one leg → **H4**
+- other leg → the **VCC** pin
 
-### Ra-02 radio
+> **H4 now has 2 legs.** One more in stage 14. The **VCC** pin stays otherwise empty until stage 14.
 
-J1 is the row with 3V3 on it. J2 is the row with NSS, MOSI, MISO, SCK.
+---
 
-| # | Solder this | To this |
-|---|---|---|
-| 54 | J1 pin 1 (GND) | **RAIL-SW** |
-| 55 | J1 pin 2 (GND) | **RAIL-SW** |
-| 56 | J2 pin 1 (GND) | **RAIL-SW** |
-| 57 | J2 pin 8 (GND) | **RAIL-SW** |
-| 58 | J1 pin 3 (3V3) | **RAIL-BAT+** |
-| 59 | J1 pin 4 (RST) | Pro Mini **D9** |
-| 60 | J1 pin 5 (DIO0) | Pro Mini **D2** |
-| 61 | J2 pin 2 (NSS) | Pro Mini **D10** |
-| 62 | J2 pin 3 (MOSI) | Pro Mini **D11** |
-| 63 | J2 pin 4 (MISO) | Pro Mini **D12** |
-| 64 | J2 pin 5 (SCK) | Pro Mini **D13** |
-| — | J1 pins 6, 7, 8 and J2 pins 6, 7 | leave empty |
+# STAGE 12 — FLOW CONNECTOR (2-pin)
 
-All four ground pins get their own wire. Not one shared.
+**12.1** — Place the 2-pin connector. Call the pins **A** and **B**.
 
-Three capacitors, legs as short as you can make them, right at the radio:
+**12.2** — pin **B** → **RAIL-SW**
 
-| # | Solder this | To this |
-|---|---|---|
-| 65 | 100 nF leg 1 | J1 pin 3 |
-| 66 | 100 nF leg 2 | J2 pin 8 |
-| 67 | 10 µF leg 1 | J1 pin 3 |
-| 68 | 10 µF leg 2 | J2 pin 8 |
-| 69 | 100 µF leg 1 | J1 pin 3 |
-| 70 | 100 µF leg 2 | J2 pin 8 |
+**12.3** — pin **A** → **H5**
 
-### Ultrasonic connector
+**12.4** — **1 MΩ**.
+- one leg → **H5**
+- other leg → **RAIL-BAT+**
 
-Module pads, left to right: **GND, RX, TX, +5V**. RX is the trigger. TX is the echo.
+**12.5** — **100 nF**.
+- one leg → **H5**
+- other leg → **RAIL-SW**
 
-| # | Solder this | To this |
-|---|---|---|
-| 71 | 100 Ω leg 1 | Pro Mini **D6** |
-| 72 | that 100 Ω leg 2 | connector pin going to module **RX** |
-| 73 | 100 Ω leg 1 | Pro Mini **D8** |
-| 74 | that 100 Ω leg 2 | connector pin going to module **TX** |
-| 75 | connector pin going to module **+5V** | **RAIL-BAT+** |
-| 76 | connector pin going to module **GND** | **RAIL-SW** |
-| 77 | 100 nF leg 1 | the **+5V** connector pin |
-| 78 | 100 nF leg 2 | the **GND** connector pin |
+> **H5 now has 3 legs.** Two more in stage 14.
 
-Echo goes to **D8**. Not D7.
+---
 
-### Temperature connector — two DS18B20 in parallel
+# STAGE 13 — RADIO HEADERS
 
-| # | Solder this | To this |
-|---|---|---|
-| 79 | Pro Mini **D3** | connector **VCC** pin |
-| 80 | connector **GND** pin | **RAIL-SW** |
-| 81 | 100 Ω leg 1 | Pro Mini **D4** |
-| 82 | that 100 Ω leg 2 | **J-TEMP** |
-| 83 | connector **DATA** pin | **J-TEMP** |
-| 84 | 4.7 kΩ leg 1 | **J-TEMP** |
-| 85 | 4.7 kΩ leg 2 | connector **VCC** pin |
+**13.1** — Place the two 8-pin sockets for the Ra-02.
+**J1** is the row with **3V3** on it. **J2** is the row with **NSS, MOSI, MISO, SCK**.
 
-Both sensors: red → VCC pin, black → GND pin, yellow → DATA pin. Same three pins for both.
-Check each probe's colours with a meter first.
+**13.2** — J1 **pin 1** (GND) → **RAIL-SW**
 
-### Flow connector
+**13.3** — J1 **pin 2** (GND) → **RAIL-SW**
 
-| # | Solder this | To this |
-|---|---|---|
-| 86 | connector pin 1 | **J-FLOW** |
-| 87 | connector pin 2 | **RAIL-SW** |
-| 88 | 100 Ω leg 1 | Pro Mini **D5** |
-| 89 | that 100 Ω leg 2 | **J-FLOW** |
-| 90 | 1 MΩ leg 1 | **J-FLOW** |
-| 91 | 1 MΩ leg 2 | **RAIL-BAT+** |
-| 92 | 100 nF leg 1 | **J-FLOW** |
-| 93 | 100 nF leg 2 | **RAIL-SW** |
-| 94 | 330 Ω leg 1 | Pro Mini **A2** |
-| 95 | that 330 Ω leg 2 | **J-FLOW** |
+**13.4** — J2 **pin 1** (GND) → **RAIL-SW**
 
-Flow switch has no polarity — either wire to either connector pin.
-Install it with the yellow arrow pointing the way the water flows.
+**13.5** — J2 **pin 8** (GND) → **RAIL-SW**
+
+Four separate wires. Not one shared.
+
+**13.6** — J1 **pin 3** (3V3) → **RAIL-BAT+**
+
+Now three capacitors, legs cut **as short as you can**, sitting right against the socket:
+
+**13.7** — **100 nF**: one leg → J1 pin 3, other leg → J2 pin 8
+
+**13.8** — **10 µF**: one leg → J1 pin 3, other leg → J2 pin 8
+
+**13.9** — **100 µF**: one leg → J1 pin 3, other leg → J2 pin 8
+
+**13.10** — J1 pins **6, 7, 8** and J2 pins **6, 7** stay empty, permanently.
+
+> J1 pins 4 and 5, and J2 pins 2, 3, 4, 5 stay empty until stage 14.
+
+---
+
+# STAGE 14 — PRO MINI
+
+Everything this stage connects to is already on the board.
+
+**14.1** — Place the Pro Mini.
+
+### Power
+
+**14.2** — **VCC** → **RAIL-BAT+**
+
+**14.3** — **GND** → **RAIL-SW**
+
+**14.4** — **100 nF**: one leg → the **VCC** pin, other leg → the **GND** pin
+
+**14.5** — **RAW** stays empty, permanently.
+
+### To the holes
+
+**14.6** — **100 Ω**: one leg → **A0**, other leg → **H3**
+> **H3 is now finished — 5 legs.**
+
+**14.7** — **100 kΩ**: one leg → **A1**, other leg → **H2**
+> **H2 is now finished — 4 legs.**
+
+**14.8** — **330 Ω**: one leg → **A2**, other leg → **H5**
+
+**14.9** — **100 Ω**: one leg → **D4**, other leg → **H4**
+> **H4 is now finished — 3 legs.**
+
+**14.10** — **100 Ω**: one leg → **D5**, other leg → **H5**
+> **H5 is now finished — 5 legs.**
+
+### To the ultrasonic connector
+
+**14.11** — **100 Ω**: one leg → **D6**, other leg → the **RX** pin
+
+**14.12** — **100 Ω**: one leg → **D8**, other leg → the **TX** pin
+
+Echo is on **D8**, not D7.
+
+### To the temperature connector
+
+**14.13** — **D3** → the **VCC** pin of the temperature connector
+
+### To the radio
+
+**14.14** — **D2** → J1 **pin 5**
+
+**14.15** — **D9** → J1 **pin 4**
+
+**14.16** — **D10** → J2 **pin 2**
+
+**14.17** — **D11** → J2 **pin 3**
+
+**14.18** — **D12** → J2 **pin 4**
+
+**14.19** — **D13** → J2 **pin 5**
 
 ### LED
 
-| # | Solder this | To this |
-|---|---|---|
-| 96 | 1 kΩ leg 1 | Pro Mini **D7** |
-| 97 | that 1 kΩ leg 2 | LED **long leg** |
-| 98 | LED **short leg** | **RAIL-SW** |
+**14.20** — **1 kΩ**: one leg → **D7**, other leg → the LED's **long leg**
+
+**14.21** — LED's **short leg** → **RAIL-SW**
+
+### Empty
+
+**14.22** — A3, A4, A5, A6, A7, D0, D1, RST, DTR stay empty.
 
 ---
 
-## 7. PINS LEFT EMPTY
+# STAGE 15 — SENSOR CABLES
 
-Pro Mini: A3, A4, A5, A6, A7, D0, D1, RST, DTR, RAW
-74HC74: pins 8, 9
-Ra-02: J1 pins 6, 7, 8 and J2 pins 6, 7
+**15.1 — Ultrasonic.** Cable from the connector to the module:
+- **GND** pin → module **GND** pad
+- **RX** pin → module **RX** pad
+- **TX** pin → module **TX** pad
+- **+5V** pin → module **+5V** pad
+
+**15.2 — Temperature, both sensors in parallel** on the same 3 pins:
+- both **red** wires → **VCC** pin
+- both **black** wires → **GND** pin
+- both **yellow** wires → **DATA** pin
+
+Check each probe's colours with a meter before soldering.
+Sensor 1 goes at the transducer. Sensor 2 on a longer lead, low in the tank headspace.
+
+**15.3 — Flow switch.** No polarity, either wire to either pin.
+Install it in the pipe with the **yellow arrow pointing the way the water flows**.
 
 ---
 
-## 8. SOLDER ORDER
+# STAGE 16 — FINAL CHECKS
 
-1. Ground mesh, if you are doing one — before any component
-2. The 4 rails
-3. Battery pack (wires 1–7), test it alone with a meter
-4. Wires 8–45
-5. **Stop. Run section 9.**
-6. Wires 46–98
+**Meter, power disconnected:**
 
----
-
-## 9. CHECKS — meter, power disconnected
-
-| # | Put probes on | Must read |
-|---|---|---|
-| 1 | RAIL-BAT− and RAIL-SW | **no beep** |
-| 2 | RAIL-BAT+ and RAIL-BAT− | no beep |
-| 3 | RAIL-BAT+ and RAIL-SW | no beep |
-| 4 | 74HC74 pin 14 and RAIL-LATCH | beep |
-| 5 | 74HC74 pin 7 and RAIL-BAT− | beep |
-| 6 | 74HC74 pin 4 and RAIL-LATCH | beep |
-| 7 | 74HC74 pin 10 and RAIL-LATCH | beep |
-| 8 | 74HC74 pin 13 and RAIL-LATCH | beep |
-| 9 | 74HC74 pin 11 and RAIL-BAT− | beep |
-| 10 | 74HC74 pin 12 and RAIL-BAT− | beep |
-| 11 | J-REED and RAIL-BAT− | 470 kΩ on resistance range |
-| 12 | Ra-02 J1 pin 1 and RAIL-SW | beep |
-| 13 | Ra-02 J1 pin 2 and RAIL-SW | beep |
-| 14 | Ra-02 J2 pin 1 and RAIL-SW | beep |
-| 15 | Ra-02 J2 pin 8 and RAIL-SW | beep |
-| 16 | Pro Mini RAW and anything | no beep |
-| 17 | Battery pack output | + on the pin you expect |
-
-## 10. FIRST POWER-UP
-
-Bench supply 3.6 V, current limit 50 mA.
-
-| Step | Should happen |
+| Probes on | Must read |
 |---|---|
-| 1. Connect power | Device OFF. RAIL-SW reads about 3.6 V |
-| 2. Magnet near reed | Device ON. RAIL-SW drops to about 0 V |
-| 3. Take magnet away | Stays ON |
-| 4. Magnet near again | OFF |
-| 5. Repeat 10 times | Exactly one change per approach |
+| RAIL-BAT− and RAIL-SW | **no beep** |
+| RAIL-BAT+ and RAIL-BAT− | no beep |
+| RAIL-BAT+ and RAIL-SW | no beep |
+| Ra-02 J1 pin 1 and RAIL-SW | beep |
+| Ra-02 J1 pin 2 and RAIL-SW | beep |
+| Ra-02 J2 pin 1 and RAIL-SW | beep |
+| Ra-02 J2 pin 8 and RAIL-SW | beep |
+| Pro Mini RAW and anything | no beep |
 
-Step 5 failing: check the 470 kΩ and the 100 Ω at the reed are actually fitted.
+**Hole leg count** — count the legs physically in each:
 
-## 11. MEASURE BEFORE SEALING
+| Hole | Must have |
+|---|---|
+| H1 | 3 |
+| H2 | 4 |
+| H3 | 5 |
+| H4 | 3 |
+| H5 | 5 |
+
+**Then repeat the stage 8 power test** with everything fitted. Ten magnet approaches, ten state changes.
+
+---
+
+# STAGE 17 — MEASURE BEFORE SEALING
 
 | Measure | Should be |
 |---|---|
 | Sleep current | 25 µA or less |
-| Current with magnet resting on the reed | about 7.7 µA |
+| Current with a magnet resting on the reed | about 7.7 µA |
 | Voltage at 74HC74 pin 14 during a transmission, cells idle a week | above 2.0 V |
 | Ultrasonic blind zone — flat target, 2 cm outward in 5 mm steps | write it down |
 | Distance between the two transducer centres, callipers | write it down |
