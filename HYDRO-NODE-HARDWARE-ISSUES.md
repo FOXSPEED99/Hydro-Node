@@ -1,11 +1,11 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v16   |   Last updated: 2026-08-22   |   Status: Stage 0 review — schematic checked against the build sheet; 3 blockers; 12 issues closed by the new schematic
+Version: v17   |   Last updated: 2026-08-22   |   Status: Stage 0 review — second schematic pass; 2 blockers; schematic connectivity is signed off, library and part-family issues remain
 
 ## STATUS SUMMARY
-Total issues: 57   |   Open: 41   |   Resolved: 15   |   Won't fix: 1
-Blockers remaining: 3
-Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, the PCB has no ground plane, and the temperature probes have no supply connection.
-Schematic: `Hydro Node Schematic.SchDoc`, checked 2026-08-22 against `BUILD-SHEET.md` — full line-by-line result in `SCHEMATIC-CHECK.md`. 29 of 34 connections correct, 5 faults.
+Total issues: 60   |   Open: 38   |   Resolved: 20   |   Won't fix: 2
+Blockers remaining: 2
+Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, and the PCB has no ground plane.
+Schematic: `Hydro Node Schematic.SchDoc`, second pass 2026-08-22 — **all 34 build-sheet connections verified correct**. Remaining issues are library and part-family, not connectivity. Full result in `SCHEMATIC-CHECK.md`.
 
 ---
 
@@ -68,56 +68,53 @@ Schematic: `Hydro Node Schematic.SchDoc`, checked 2026-08-22 against `BUILD-SHEE
 
 ---
 
-### HW-053 — The DS18B20 probes have no supply: D3 → J2.3 is missing
-- Severity: BLOCKER
-- Status: OPEN — found in the 2026-08-22 schematic check
-- Component / net: `U1.JP7_7 (D3)` unconnected; `J2.3` on net N28
-- Problem: `U1.JP7_7 (D3)` has no wire on it, and `J2.3` — the temperature connector's VCC pin — connects to exactly one thing: `R7.1`, the far end of the 4.7 kΩ pull-up. Build sheet step 14.10 calls for **D3 → the temperature connector's VCC pin**. That wire is not in the schematic.
-- Impact: both DS18B20 probes sit with their VDD pin floating, held only through 4.7 kΩ back to their own data line. The DS18B20 datasheet allows VDD to be a supply of 3.0–5.5 V, or tied to GND for parasite power. Floating is neither, and the part's behaviour there is undefined. In practice: no temperature reading.
-- Second-order impact: the temperature reading is not only a reported value, it is what corrects the ultrasonic distance for the speed of sound. Losing it costs roughly **0.18 % of distance per °C** of uncorrected error — on a 1 m range and a 30 °C swing between night and afternoon on a Syrian roof, that is a systematic error of several centimetres that moves with the time of day.
-- Third-order impact: with VCC floating there is a current path from D4 → R4 → the probe's data pin into the sensor die. The probes are powered through their protection structures whenever D4 drives high. That is not a designed parasite-power connection and it is not safe to leave.
-- Fix: **wire `U1.JP7_7 (D3)` to `J2.3`.** One net. D3 then switches probe power as the build sheet intends, so the probes draw nothing between readings.
-- Notes: the connector's pin order is DATA · GND · VCC, the reverse of the build sheet's VCC · GND · DATA. That is harmless with a hand-made cable but the build-sheet label and the silkscreen (**HW-038**) must be corrected to match, or the cable gets built to the wrong drawing.
 
----
 
-### HW-054 — Ultrasonic connector pin order does not match the RCWL-1670 pad order
+### HW-058 — C7, C8 and C9 are aluminium electrolytics on a two-year rooftop product
 - Severity: MAJOR
 - Status: OPEN — found in the 2026-08-22 schematic check
-- Component / net: `J3.2` on BATT+, `J3.4` on N27
-- Problem: the RCWL-1670's four pads are printed, left to right, **`GND · RX · TX · +5V`**. J3 is wired GND · **+5V** · TX · **RX** — positions 2 and 4 are swapped relative to the module.
-- Impact: with a straight-through 1:1 cable, **3.6 V lands on the module's RX input** while the module's supply pin is driven by an MCU output through a 100 Ω resistor. The module never powers up, and its RX pin is fed from a rail with no current limit beyond the cable.
-- Why this is worth fixing in the schematic rather than in the cable: a crossed cable makes it work, and a crossed cable is exactly what **HW-001** already flags — an undrawn cross-over harness that nobody can verify at assembly and that fails silently when someone builds the obvious 1:1 version.
-- Fix: **swap the nets on `J3.2` and `J3.4`.** J3 then reads `GND · RX · TX · +5V`, matching the module, matching the build sheet's tape label, and making a straight cable correct.
-- Notes: check the module in hand before the swap. Several different boards carry the RCWL-1670 name with different pad orders; ours is the 4-pad UART version photographed in `Components Images/1-19.jpg`, printed `GND RX TX +5V`. Confirm the silkscreen on the actual module matches before committing the change.
+- Component / net: C7 100 µF (radio bulk), C8 10 µF (radio bulk), C9 10 µF (latch hold-up). All three use footprint `WCAP-ATLL_D5H11`
+- Problem: all three carry the same parameters in the schematic — **aluminium, radial 5 × 11 mm, 105 °C, 4000 hours**, leakage **10 µA** for C7 and **5 µA** each for C8 and C9. Aluminium electrolytics are the one capacitor family that *wears out*: the electrolyte evaporates, and the rated life is quoted at the rated temperature.
+- Impact 1 — **wear-out inside the target life.** The standard rule is that life doubles for every 10 °C below the rating. **HW-027** puts the internal enclosure temperature at **70–85 °C** on a Syrian roof in summer:
+
+  | Internal temperature | Life from 4000 h at 105 °C |
+  |---|---|
+  | 75 °C | ~32,000 h ≈ **3.6 years** |
+  | 85 °C | ~16,000 h ≈ **1.8 years** |
+
+  At the top of that range the capacitors are worn out **before the two-year battery target is reached**. As they dry out their ESR rises, which is exactly the property the radio's transmit burst depends on — so the failure mode is not "no capacitance", it is a supply that sags further every month until the latch drops out. That is **HW-042** coming back through a different door.
+- Impact 2 — **C9 leaks on the always-live rail.** C9 sits between the latch rail (N04) and BATT-. Both are powered whether the device is on or off, so its leakage is a **24/7 drain that the magnet cannot switch off**. The part's own parameter says up to 5 µA; the sleep-current target in the build sheet is 25 µA total. At 3.6 V on a 50 V part the real figure will be far below the specified maximum — but leakage rises steeply with temperature, and nothing guarantees it on a hot roof.
+- Fix:
+  - **C9 → ceramic 10 µF 16 V X7R (1206) or tantalum.** This is the one that matters most: it is on the rail that never switches off, and it is the rail that holds the latch up through a transmit burst.
+  - **C7 → tantalum 100 µF, or ceramic 1210 rated 16 V or 25 V.** Ceramic at 6.3 V loses 50–70 % of its value at 3.6 V through DC bias derating; tantalum does not derate and is what `BUILD-SHEET.md` already specifies.
+  - **C8 → ceramic 10 µF 16 V X7R (1206).**
+  - Neither ceramic nor tantalum dries out, and both have leakage orders of magnitude below an electrolytic.
+- Notes: the build sheet already called for a tantalum 100 µF for the DC-bias reason. This issue is the second, independent reason to move off aluminium, and it applies to all three parts rather than just the 100 µF. Surface-mount 1206/1210 is already accepted for this build.
 
 ---
 
-### HW-055 — Buzzer LS1 is driven straight off D7 with no series resistor
+### HW-059 — S1's part number is a surface-mount reed; its footprint is through-hole
 - Severity: MAJOR
 - Status: OPEN — found in the 2026-08-22 schematic check
-- Component / net: N23 — `LS1.P` to `U1.JP7_3 (D7)`, direct
-- Problem: the CPT-1255C-090 is an **externally driven** piezo transducer with an electrostatic capacity of **8,400–15,600 pF** (datasheet, at 120 Hz / 1 V). It is wired directly to a logic pin. A capacitor connected straight to an output draws its charging current at the switching edge, limited only by the pin's own output impedance — a peak well above the ATmega328P's **40 mA absolute maximum per pin**.
-- Impact: the energy per edge is tiny (½CV² ≈ 65 nJ) so the pin is unlikely to fail quickly, but the current spike is real, it is repeated at 4 kHz for the whole beep, and it is injected into a supply that has no ground plane under it (**HW-004**) and a 433 MHz receiver a few centimetres away.
-- Fix: **100 Ω in series between D7 and `LS1.P`.** At the rated 4 kHz the transducer's own impedance is around 3 kΩ, so 100 Ω costs no measurable loudness. This is the second 1 kΩ from the build sheet's buy list changing value — it was the LED resistor.
-- Three further points on the substitution, which replaced the LED and its 1 kΩ:
-  1. **Audibility.** Rated output is **70 dB at 10 cm at 3 Vp-p**. Driven single-ended from 3.3 V you get about that in free air. Sealed inside a rooftop enclosure you will get far less — it needs a **sound port**, which is another penetration to seal against **HW-027** and **HW-028**. A port that keeps water out will also cost several dB.
-  2. **State, not events.** A beep says something happened. It cannot say whether the device is currently on, which is the whole substance of **HW-044** — that issue is *not* closed by this change.
-  3. **Optional, if it turns out too quiet:** driving the transducer differentially from two pins gives 6.6 Vp-p instead of 3.3 and roughly +6 dB. Costs one more pin and one more 100 Ω.
-- Question for you: **was dropping the LED deliberate, or did the buzzer replace it by accident?** If commissioning on a roof matters — and it does, since the magnet is the only control — a red LED and the buzzer together is a few cents and one pin.
+- Component / net: S1, `Manufacturer Part Number = MDSM-4R-12-18`, footprint `REEDSW-THT-D4L29-P35`
+- Problem: the two do not describe the same part. **MDSM-4R-12-18 is a Littelfuse surface-mount reed**, SPST-NO, glass envelope **15.24 × 2.28 mm**, 12–18 AT sensitivity. The footprint name says through-hole, 29 mm long, 4 mm diameter. The reed actually on the bench — `Components Images/F2293658-01.jpg`, and the one `BUILD-SHEET.md` stage 7 describes bending the legs of — is an axial through-hole glass reed with long wire leads.
+- Impact: the BOM is generated from the schematic. Order this line as written and an SMD part arrives that does not fit the board. This is the fifth documentation-versus-hardware mismatch on the project (**HW-033**) and the second to be found in a library part rather than a document.
+- Fix: decide which part is real, then make both fields agree.
+  1. Measure the reed you are actually fitting — glass length, overall length, lead diameter.
+  2. Set the MPN to that part.
+  3. Open `REEDSW-THT-D4L29-P35` and check the pad pitch against the measurement. `D4L29-P35` reads as a 4 mm diameter, 29 mm body, 3.5 mm pitch — confirm which of those is the lead spacing, because a reed's leads are usually formed to whatever pitch you choose.
+- Notes: do this at the same time as **HW-057**, since both are the same symbol needing a clean-up. Also relevant to **HW-039** — a bare glass body with long unsupported leads needs its lead-forming and strain relief specified, and that depends on the same measurement.
 
 ---
 
-### HW-056 — Four Pro Mini power and ground pins are left unconnected
-- Severity: MINOR
-- Status: OPEN — found in the 2026-08-22 schematic check
-- Component / net: `U1.JP1_4 (VCC)`, `U1.JP1_5 (GND)`, `U1.JP1_6 (GND)`, `U1.JP7_9 (GND_2)`
-- Problem: the Pro Mini symbol exposes two VCC pins and four GND pins. Only `JP6_4 (VCC_1)` and `JP6_2 (GND_1)` are wired.
-- Impact: nothing electrical — these are the same nets inside the module. Two things that do matter:
-  1. Each unconnected GND pad is a **stitching point thrown away**. On a board that already has **HW-004** against it, every extra tie from the module's ground into the pour shortens a return path.
-  2. Four unconnected-pin errors in the DRC report is where a real one hides. The report should be empty except for pins deliberately marked no-connect.
-- Fix: wire `JP1_4` to BATT+ and `JP1_5`, `JP1_6`, `JP7_9` to the switched ground. Place a **No ERC** marker on every pin that is meant to stay open — A3–A7, RAW, DTR, TXO, RXI and the duplicate RST/TXO/RXI — so the DRC report goes to zero and stays meaningful.
-- Not a fault, recorded so it is not "fixed" by mistake: `U1.JP6_3 (RST_1)` is correctly left open. The Pro Mini module carries its own reset pull-up.
+### HW-060 — The Ra-02 footprint pitch must be verified against the module before layout
+- Severity: MAJOR
+- Status: OPEN — needs a measurement, found in the 2026-08-22 schematic check
+- Component / net: U3, footprint `RA-02_BREAKOUT_THT_2X8`
+- Problem: the Ai-Thinker Ra-02 is a **16-pad module on a 2.0 mm pitch**, two rows of eight. The commonest generic "2×8 through-hole" footprints are drawn on the 2.54 mm pitch used by ordinary headers. The footprint name does not say which this one is, and it cannot be read out of the `.SchDoc` — the geometry lives in the PcbLib.
+- Impact: if the footprint is 2.54 mm, the module does not fit, and the mistake is not visible until the boards and the stencil are already made. This is the single most expensive error available at this stage.
+- Fix: before routing anything, open the footprint in the PCB library editor and check the pad pitch and the row-to-row spacing against the module in your hand, with callipers. Do the same check for `MODULE_ARDUINO_PRO_MINI` (should be 2.54 mm, 12 × 2 plus the end rows) and for the three JST XH headers (**2.50 mm**, not 2.54 mm — XH is a metric 2.5 mm series and the difference accumulates to 0.2 mm across a 4-way part).
+- Notes: `BUILD-SHEET.md` stage 13 has the Ra-02 in sockets rather than soldered flat. If the production intent is sockets, the footprint must be the socket's pitch, and the socket must be one that accepts a 2.0 mm module. Settle this before the layout, not after.
 
 ---
 
@@ -143,6 +140,16 @@ Schematic: `Hydro Node Schematic.SchDoc`, checked 2026-08-22 against `BUILD-SHEE
   2. Print the four signal names on the silkscreen beside J5 (HW-038).
   3. Whatever order you settle on, issue the harness as a **controlled drawing** — wire colours, both connector pinouts, length — and put it in the BOM (HW-033). A cross-over cable that exists only in someone's head is not a production document.
 - Notes (v5): Downgraded because you confirmed the assembly method and that the pinout is known. Not closed, because the schematic still disagrees with the hardware and the harness is undocumented. It closes when the schematic is corrected or the harness drawing exists.
+- **Update (v17) — the cross-over is now permanent, and this issue is the only thing standing between it and a wrong cable.** HW-054 is closed WON'T FIX: J3 stays `GND · +5V · TX · RX` while the RCWL-1670's pads are `GND · RX · TX · +5V`. That is a deliberate decision, so the harness **must** swap pins 2 and 4:
+
+  | J3 pin on the board | Wire goes to module pad |
+  |---|---|
+  | 1 — GND | GND |
+  | 2 — +5V | **+5V (pad 4)** |
+  | 3 — TX | TX (pad 3) |
+  | 4 — RX | **RX (pad 2)** |
+
+  A straight 1:1 cable puts 3.6 V on the module's RX pin and leaves the module unpowered. Nobody can infer the crossover from the board, so **the harness drawing is now a blocking prerequisite for building any cable**, not a documentation nicety. It needs: wire colours, the pin-to-pad table above, overall length, and a continuity test step. Silkscreen must read `GND · +5V · TX · RX` to match the board (**HW-038**).
 
 ---
 
@@ -159,18 +166,6 @@ Schematic: `Hydro Node Schematic.SchDoc`, checked 2026-08-22 against `BUILD-SHEE
   - Orient the assembly so the transducer faces point straight down and nothing can sit on them.
   - The enclosure needs its own **breather membrane** for the same reason as the main one (HW-028) — a sealed box that swings 40 °C daily will pump moisture in.
 - Notes: **Questions still open:** (1) Is your RCWL-1670 the variant with the transducers soldered to the board, or on flying leads? Flying leads make the potted feedthrough much easier. (2) What is the tank material and lid construction — this decides how both the sensor enclosure and the cable penetration (HW-045) get mounted. (3) Roughly what temperature range does the headspace see at your site?
-
----
-
-### HW-007 — Ra-02: only one of its four GND pins is connected
-- Severity: MAJOR
-- Status: OPEN — **still open in the 2026-08-22 schematic**, and it is four GND pins, not three
-- Component / net: `U3.1`, `U3.2`, `U3.16` unconnected; `U3.9` on the switched ground
-- Problem: Extracted from the schematic netlist: the module's ground returns to the board through **one pin, `U3.9`**. The Ra-02 symbol has four GND pins — 1, 2, 9 and 16 — and three of them are left open. The module's 120 mA TX return current therefore takes one long trace.
-- Impact: Supply droop and ground bounce at the RF module during TX, reduced TX power and RX sensitivity, and a large radiating current loop. Compounds HW-004 directly — one ground pin and no pour under it is the worst combination available.
-- Recommended fix: Connect **all four** GND pins to the switched-ground pour, each with its own wire rather than daisy-chained. In the 2-layer layout, tie them to the pour with short wide connections and stitch around the module footprint.
-- Notes: `U3.4 (RESET)` is connected via D9 and `U3.5 (DIO0)` via D2 — both correct in the current schematic. DIO1–DIO5 remain open; consider bringing DIO1 out to a spare pin, since some LoRa stacks use it for RX-timeout and CAD-done, which the pairing protocol (Stage 6) may want.
-- Note on the count (v16): this issue originally said "three GND pins" based on the earlier schematic's connector symbols. The current Ra-02 symbol has four. Nothing about the defect changed — one is connected either way.
 
 ---
 
@@ -603,6 +598,8 @@ Schematic: `Hydro Node Schematic.SchDoc`, checked 2026-08-22 against `BUILD-SHEE
 - Recommended fix: Rebuild the BOM from the schematic's designator list rather than by hand, add a mechanical/consumables section, and add a **manufacturer part number and a lifecycle status** column for every line. Cross-check every designator appears exactly once.
 - Notes (v11): **Third documentation mismatch found, and this one changed a review conclusion.** The BOM lists only "Water Flow switch" with no part number; the component photo shows an **HT-60, AC 220 V 0.5 A**; the part actually fitted is a **WY-90, DC 12–24 V**. Reviewing against the photo produced a wrong severity on HW-019. Together with the LED colour (blue vs red, HW-016), the R5 value (220 Ω vs 330 Ω) and the C3 rating (16 V vs 25 V), that is four places where the documents and the built article disagree. **A full reconciliation pass is now overdue** — every line needs a manufacturer part number, and every component photo needs to be of the part actually fitted, or the next review will make the same class of error.
 - Notes: Also add: LoRa antenna, IPEX-to-SMA pigtail (listed), SMA bulkhead gasket, and the actuating magnet (listed, but with no grade or dimensions specified — see HW-015).
+- **Update (v17) — the schematic can now generate most of a BOM, but six lines have no manufacturer part number** and will come out blank: **BATT, J1, J2, J3, C7, C8, C9, Q1**. The three electrolytics are the ones that matter, because **HW-058** says they should not be electrolytics at all — fill those lines in only after that decision is made, so the part number and the dielectric are chosen together.
+- **Update (v17) — fifth documentation-versus-hardware mismatch, and the first inside a library part.** S1 carries `MDSM-4R-12-18`, a surface-mount reed, against a through-hole footprint and a through-hole part on the bench. Written up as **HW-059**. The pattern is now consistent enough to be a process problem rather than a series of slips: every part number in the schematic should be checked against the physical part before the BOM is released, not after. That check is cheap now and expensive once boards are ordered.
 
 ---
 
@@ -615,17 +612,6 @@ Schematic: `Hydro Node Schematic.SchDoc`, checked 2026-08-22 against `BUILD-SHEE
 - Impact: Silent addition to sleep current — precisely the kind of thing that makes a measured power budget disagree with the calculated one.
 - Recommended fix: Firmware must explicitly configure **every** unused pin before sleeping — either as an input with the internal pull-up enabled, or as an output driven low. Add this to the Stage 7 checklist and make it a measured pass/fail. It is a firmware fix, but it is recorded here because it is a power-path issue and it will be forgotten otherwise.
 - Notes: In the respin, tie genuinely unused pins to ground through pads so the state is defined by hardware rather than by remembering.
-
----
-
-### HW-036 — Carbon-film ½ W resistors throughout
-- Severity: MINOR
-- Status: OPEN
-- Component / net: R1–R6
-- Problem: All six resistors are ½ W axial carbon film (±5 % typical, and a temperature coefficient in the −200 to −1000 ppm/°C region). They are also physically large for a board that should be moving to SMD.
-- Impact: Low, in this circuit — none of these resistors is in a precision path. R6 (the 1-Wire pull-up) and R3/R4 (the RC networks) all tolerate ±5 % easily. The real cost is size and assembly method.
-- Recommended fix: Move to **0603 1 % metal-film** in the respin, for placement by machine and for a defined tempco. Not urgent on its own — bundle it with HW-026.
-- Notes: Recorded for completeness; this is the lowest-priority item on the list.
 
 ---
 
@@ -674,6 +660,12 @@ Schematic: `Hydro Node Schematic.SchDoc`, checked 2026-08-22 against `BUILD-SHEE
   - Encode state in the startup pattern: for example a short double-blink for "paired, entering normal cycle" and a slow repeating blink for "unpaired, in pairing mode". Free, and it saves an installer a trip.
   - Consider also blinking a coarse battery-health indication at power-on, once HW-025's internal-bandgap measurement exists.
 - Notes: Firmware-only once the HW-043 sense line is in place. Cost is negligible — the startup blink is about 1.7 µAh per power-on at ~2 mA for 3 s, and the device is switched roughly five times in two years.
+- **Update (v17) — the indicator is now a buzzer, and this issue becomes a firmware specification.** The LED is gone; LS1 beeps through D7 and R15. That is the right call for commissioning — you hear it without looking at the box, which matters on a roof in sunlight. It changes what this issue is asking for:
+  - The Node has **A0** reading the reed line and **A1** reading the latch state, so firmware knows both that a magnet was applied and which way the latch went. Everything needed is on the board.
+  - **The patterns must be distinguishable, and the OFF pattern must sound before the latch drops.** A single beep for ON and a distinct double beep for OFF. If the firmware beeps *after* commanding shutdown, the ground is already gone and nothing sounds — so the OFF beep has to complete first, then A1 pulls `1~RD` low.
+  - **Silence must be unambiguous.** If a magnet pass produces no sound at all, that has to mean "the device is dead", not "it turned off quietly". That is the whole point of this issue and it is a sequencing requirement, not a hardware one.
+  - A **low-battery pattern** costs nothing once HW-025 telemetry exists.
+- Closes when the beep patterns are written into the firmware specification, not before.
 
 ---
 
@@ -922,10 +914,104 @@ Schematic: `Hydro Node Schematic.SchDoc`, checked 2026-08-22 against `BUILD-SHEE
 
 ---
 
+### HW-007 — Ra-02: only one of its four GND pins is connected  ✅ RESOLVED (v17)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v17) — 2026-08-22 schematic
+- Component / net: `U3.1`, `U3.2`, `U3.16` unconnected; `U3.9` on the switched ground
+- Problem: Extracted from the schematic netlist: the module's ground returns to the board through **one pin, `U3.9`**. The Ra-02 symbol has four GND pins — 1, 2, 9 and 16 — and three of them are left open. The module's 120 mA TX return current therefore takes one long trace.
+- Impact: Supply droop and ground bounce at the RF module during TX, reduced TX power and RX sensitivity, and a large radiating current loop. Compounds HW-004 directly — one ground pin and no pour under it is the worst combination available.
+- Recommended fix: Connect **all four** GND pins to the switched-ground pour, each with its own wire rather than daisy-chained. In the 2-layer layout, tie them to the pour with short wide connections and stitch around the module footprint.
+- Notes: `U3.4 (RESET)` is connected via D9 and `U3.5 (DIO0)` via D2 — both correct in the current schematic. DIO1–DIO5 remain open; consider bringing DIO1 out to a spare pin, since some LoRa stacks use it for RX-timeout and CAD-done, which the pairing protocol (Stage 6) may want.
+- Note on the count (v16): this issue originally said "three GND pins" based on the earlier schematic's connector symbols. The current Ra-02 symbol has four. Nothing about the defect changed — one is connected either way.
+- **Resolution (v17):** all four GND pins are now on the switched-ground net — `U3.1`, `U3.2`, `U3.9`, `U3.16`. Verified in the 2026-08-22 schematic.
+- **Carried to the PCB stage:** four wires on the schematic is not four return paths on the board. Each pad needs its own short, wide tie into the pour, with stitching vias around the module footprint. That is a layout requirement, not a schematic one.
+
+---
+
+### HW-036 — Carbon-film ½ W resistors throughout  ✅ RESOLVED (v17)
+- Severity: MINOR
+- Status: ✅ RESOLVED (v17) — 2026-08-22 schematic
+- Component / net: R1–R6
+- Problem: All six resistors are ½ W axial carbon film (±5 % typical, and a temperature coefficient in the −200 to −1000 ppm/°C region). They are also physically large for a board that should be moving to SMD.
+- Impact: Low, in this circuit — none of these resistors is in a precision path. R6 (the 1-Wire pull-up) and R3/R4 (the RC networks) all tolerate ±5 % easily. The real cost is size and assembly method.
+- Recommended fix: Move to **0603 1 % metal-film** in the respin, for placement by machine and for a defined tempco. Not urgent on its own — bundle it with HW-026.
+- Notes: Recorded for completeness; this is the lowest-priority item on the list.
+- **Resolution (v17):** every resistor in the schematic is a **Yageo MFR-25, metal film, 0.25 W, 1 %**, confirmed from the part parameters (`MFR-25FBF52-…`) and the `FP-MFR-25-MFG` footprint on all fifteen. Metal film also brings the temperature coefficient down to 100 ppm/°C, which matters for R14 and C12 setting the reed's ~47 ms recovery across a rooftop temperature swing.
+
+---
+
+### HW-053 — The DS18B20 probes have no supply: D3 → J2.3 is missing  ✅ RESOLVED (v17)
+- Severity: BLOCKER
+- Status: ✅ RESOLVED (v17) — 2026-08-22 schematic
+- Component / net: `U1.JP7_7 (D3)` unconnected; `J2.3` on net N28
+- Problem: `U1.JP7_7 (D3)` has no wire on it, and `J2.3` — the temperature connector's VCC pin — connects to exactly one thing: `R7.1`, the far end of the 4.7 kΩ pull-up. Build sheet step 14.10 calls for **D3 → the temperature connector's VCC pin**. That wire is not in the schematic.
+- Impact: both DS18B20 probes sit with their VDD pin floating, held only through 4.7 kΩ back to their own data line. The DS18B20 datasheet allows VDD to be a supply of 3.0–5.5 V, or tied to GND for parasite power. Floating is neither, and the part's behaviour there is undefined. In practice: no temperature reading.
+- Second-order impact: the temperature reading is not only a reported value, it is what corrects the ultrasonic distance for the speed of sound. Losing it costs roughly **0.18 % of distance per °C** of uncorrected error — on a 1 m range and a 30 °C swing between night and afternoon on a Syrian roof, that is a systematic error of several centimetres that moves with the time of day.
+- Third-order impact: with VCC floating there is a current path from D4 → R4 → the probe's data pin into the sensor die. The probes are powered through their protection structures whenever D4 drives high. That is not a designed parasite-power connection and it is not safe to leave.
+- Fix: **wire `U1.JP7_7 (D3)` to `J2.3`.** One net. D3 then switches probe power as the build sheet intends, so the probes draw nothing between readings.
+- Notes: the connector's pin order is DATA · GND · VCC, the reverse of the build sheet's VCC · GND · DATA. That is harmless with a hand-made cable but the build-sheet label and the silkscreen (**HW-038**) must be corrected to match, or the cable gets built to the wrong drawing.
+- **Resolution (v17):** fixed, though not the way the build sheet specified. `J2.3` is now tied to **BATT+** rather than switched from D3, and `R7` pulls the data line up to the same rail. The probes have a proper supply, their GND stays on the switched ground, so the ground switch still removes them completely when the device is off.
+- **Cost of the change, so it is on the record:** the two probes now draw their standby current the whole time the device is *on*, instead of only during a reading. At the DS18B20's typical 750 nA standby that is about 1.5 µA for the pair, roughly 26 mAh over two years — **under 1 % of a 4.4 Ah pack**. Not worth another wire.
+- **What was given up:** there is no longer a way to power-cycle a hung 1-Wire bus, and a probe cable that shorts VDD to GND is now fed straight from the battery through the pack fuse instead of being current-limited by an MCU pin. The second point belongs with **HW-012**.
+- **D3 is now a spare pin.**
+
+---
+
+### HW-054 — Ultrasonic connector pin order does not match the RCWL-1670 pad order  ⛔ WON'T FIX (v17)
+- Severity: MAJOR
+- Status: ⛔ WON'T FIX (v17) — 2026-08-22 schematic
+- Component / net: `J3.2` on BATT+, `J3.4` on N27
+- Problem: the RCWL-1670's four pads are printed, left to right, **`GND · RX · TX · +5V`**. J3 is wired GND · **+5V** · TX · **RX** — positions 2 and 4 are swapped relative to the module.
+- Impact: with a straight-through 1:1 cable, **3.6 V lands on the module's RX input** while the module's supply pin is driven by an MCU output through a 100 Ω resistor. The module never powers up, and its RX pin is fed from a rail with no current limit beyond the cable.
+- Why this is worth fixing in the schematic rather than in the cable: a crossed cable makes it work, and a crossed cable is exactly what **HW-001** already flags — an undrawn cross-over harness that nobody can verify at assembly and that fails silently when someone builds the obvious 1:1 version.
+- Fix: **swap the nets on `J3.2` and `J3.4`.** J3 then reads `GND · RX · TX · +5V`, matching the module, matching the build sheet's tape label, and making a straight cable correct.
+- Notes: check the module in hand before the swap. Several different boards carry the RCWL-1670 name with different pad orders; ours is the 4-pad UART version photographed in `Components Images/1-19.jpg`, printed `GND RX TX +5V`. Confirm the silkscreen on the actual module matches before committing the change.
+- **WON'T FIX (v17) — your decision, 2026-08-22: the pin order is intentional.** J3 stays `GND · +5V · TX · RX`.
+- What this locks in: the ultrasonic harness is now permanently a **cross-over cable**. Pins 2 and 4 must swap between the board and the module. A straight 1:1 cable will put 3.6 V on the module's RX pin and leave the module unpowered.
+- That requirement moves to **HW-001**, which already covers the undrawn cross-over harness. It is no longer a schematic fault; it is a harness drawing that must exist before anyone builds a cable.
+- Recorded so nobody 'fixes' it later: the swap is not a mistake and must not be corrected in a future revision without also changing the cable.
+
+---
+
+### HW-055 — Buzzer LS1 is driven straight off D7 with no series resistor  ✅ RESOLVED (v17)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v17) — 2026-08-22 schematic
+- Component / net: N23 — `LS1.P` to `U1.JP7_3 (D7)`, direct
+- Problem: the CPT-1255C-090 is an **externally driven** piezo transducer with an electrostatic capacity of **8,400–15,600 pF** (datasheet, at 120 Hz / 1 V). It is wired directly to a logic pin. A capacitor connected straight to an output draws its charging current at the switching edge, limited only by the pin's own output impedance — a peak well above the ATmega328P's **40 mA absolute maximum per pin**.
+- Impact: the energy per edge is tiny (½CV² ≈ 65 nJ) so the pin is unlikely to fail quickly, but the current spike is real, it is repeated at 4 kHz for the whole beep, and it is injected into a supply that has no ground plane under it (**HW-004**) and a 433 MHz receiver a few centimetres away.
+- Fix: **100 Ω in series between D7 and `LS1.P`.** At the rated 4 kHz the transducer's own impedance is around 3 kΩ, so 100 Ω costs no measurable loudness. This is the second 1 kΩ from the build sheet's buy list changing value — it was the LED resistor.
+- Three further points on the substitution, which replaced the LED and its 1 kΩ:
+  1. **Audibility.** Rated output is **70 dB at 10 cm at 3 Vp-p**. Driven single-ended from 3.3 V you get about that in free air. Sealed inside a rooftop enclosure you will get far less — it needs a **sound port**, which is another penetration to seal against **HW-027** and **HW-028**. A port that keeps water out will also cost several dB.
+  2. **State, not events.** A beep says something happened. It cannot say whether the device is currently on, which is the whole substance of **HW-044** — that issue is *not* closed by this change.
+  3. **Optional, if it turns out too quiet:** driving the transducer differentially from two pins gives 6.6 Vp-p instead of 3.3 and roughly +6 dB. Costs one more pin and one more 100 Ω.
+- Question for you: **was dropping the LED deliberate, or did the buzzer replace it by accident?** If commissioning on a roof matters — and it does, since the magnet is the only control — a red LED and the buzzer together is a few cents and one pin.
+- **Resolution (v17):** **R15, 100 Ω** is fitted between `U1.JP7_3 (D7)` and `LS1.P`. Peak edge current into the transducer's 8.4–15.6 nF is now limited to about 36 mA, inside the ATmega328P's 40 mA absolute maximum, and at the rated 4 kHz the 100 Ω is negligible against the transducer's own ~3 kΩ.
+- **The LED-to-buzzer substitution is confirmed deliberate** (your call, 2026-08-22): a short beep after the magnet is what tells you the device turned on. That is a better commissioning signal than an LED you have to be looking at.
+- Two things it does not settle, both still live: the enclosure needs a **sound port** (HW-027, HW-028), and the *pattern* has to distinguish on from off — see **HW-044**.
+- Buy-list change: **7 × 100 Ω**, not 6. The second 1 kΩ from the original list is no longer needed.
+
+---
+
+### HW-056 — Four Pro Mini power and ground pins are left unconnected  ✅ RESOLVED (v17)
+- Severity: MINOR
+- Status: ✅ RESOLVED (v17) — 2026-08-22 schematic
+- Component / net: `U1.JP1_4 (VCC)`, `U1.JP1_5 (GND)`, `U1.JP1_6 (GND)`, `U1.JP7_9 (GND_2)`
+- Problem: the Pro Mini symbol exposes two VCC pins and four GND pins. Only `JP6_4 (VCC_1)` and `JP6_2 (GND_1)` are wired.
+- Impact: nothing electrical — these are the same nets inside the module. Two things that do matter:
+  1. Each unconnected GND pad is a **stitching point thrown away**. On a board that already has **HW-004** against it, every extra tie from the module's ground into the pour shortens a return path.
+  2. Four unconnected-pin errors in the DRC report is where a real one hides. The report should be empty except for pins deliberately marked no-connect.
+- Fix: wire `JP1_4` to BATT+ and `JP1_5`, `JP1_6`, `JP7_9` to the switched ground. Place a **No ERC** marker on every pin that is meant to stay open — A3–A7, RAW, DTR, TXO, RXI and the duplicate RST/TXO/RXI — so the DRC report goes to zero and stays meaningful.
+- Not a fault, recorded so it is not "fixed" by mistake: `U1.JP6_3 (RST_1)` is correctly left open. The Pro Mini module carries its own reset pull-up.
+- **Resolution (v17):** `JP1_4 (VCC)` is on BATT+, and `JP1_5`, `JP1_6`, `JP7_9 (GND_2)` are on the switched ground. Every power and ground pad on the module is now tied, which is four more stitching points into the pour against **HW-004**.
+- Still worth doing at layout: put **No ERC** markers on the pins meant to stay open — A3–A7, RAW, DTR, TXO, RXI and the duplicate RST/TXO/RXI — so the DRC report goes to zero and a real error cannot hide in the noise.
+
+---
+
 ## CHANGELOG
 
 | Version | Date | Change |
 |---|---|---|
+| v17 | 2026-08-22 | **Second schematic pass — connectivity is now signed off.** All 34 build-sheet connections verified correct; the remaining problems are library and part-family, not wiring. **Closed: HW-055** (R15 100 Ω fitted between D7 and the buzzer), **HW-007** (all four Ra-02 GND pins now tied), **HW-056** (all Pro Mini power and ground pads tied), **HW-053** (probe supply fixed by tying J2.3 to BATT+ rather than switching it from D3 — costs about 1.5 µA of standby, roughly 26 mAh over two years, under 1 % of the pack; D3 is now spare), and **HW-036** (every resistor is a Yageo MFR-25 metal film 0.25 W 1 %). **HW-054 → WON'T FIX** — the ultrasonic pin order is intentional; that permanently makes the harness a cross-over cable, and the requirement moves to HW-001. The LED-to-buzzer substitution is confirmed deliberate. **Three new issues, all found by checking the library rather than the netlist: HW-058** — C7, C8 and C9 are aluminium electrolytics rated 105 °C / 4000 h, which at HW-027's 70–85 °C internal temperature is 1.8–3.6 years, inside the two-year target; C9 also leaks on the always-live latch rail that the magnet cannot switch off. **HW-059** — S1's part number `MDSM-4R-12-18` is a Littelfuse *surface-mount* reed while its footprint is through-hole; the BOM would order the wrong part. **HW-060** — the Ra-02 footprint pitch must be measured against the module before layout, since the Ra-02 is a 2.0 mm pitch part and generic 2×8 through-hole footprints are 2.54 mm. Also confirmed every one of the 38 components has a current PCB footprint assigned, no duplicate designators, no orphan junction dots, and no missing connections. Blockers 3 → 2. |
 | v16 | 2026-08-22 | **Schematic received and checked line by line against `BUILD-SHEET.md`; full result in `SCHEMATIC-CHECK.md`.** 29 of 34 connections correct. Five faults found: **HW-053 (BLOCKER)** — `D3 → J2.3` is missing, so both DS18B20 probes have no supply and their VDD floats, which also loses the speed-of-sound correction on the ultrasonic reading; **HW-054** — the ultrasonic connector is wired GND·+5V·TX·RX against the module's GND·RX·TX·+5V, so a straight cable puts 3.6 V on the module's RX and leaves it unpowered; **HW-055** — the buzzer that replaced the LED sits directly on D7 with no series resistor, and its 8.4–15.6 nF draws an edge current above the pin's 40 mA absolute maximum; **HW-056** — four Pro Mini power and ground pads left open, losing ground stitching against HW-004; **HW-057** — a stray second reed pin pair parked off-sheet at (1060, −180). **HW-007 confirmed still open** — the symbol has four GND pins and three are unconnected, not three with two as originally written. **Twelve issues closed by the new schematic:** HW-009 and HW-034 (2200 µF gone, replaced by 100 µF/10 µF sized to the TX burst), HW-013 (nine local 100 nF — placement condition carried to the PCB stage), HW-014 and HW-043 (100 Ω + 470 kΩ + 100 nF giving ~47 ms recovery), HW-016 (LED removed), HW-018 (echo moved to D8, ICP1 available), HW-020 (flow input pulled up, filtered and protected), HW-021 (A0 reads the reed, A1 drives ~RD through 100 kΩ), HW-037 and HW-041 (74HC74N fitted), HW-042 (D1 + 10 µF + 100 nF holding the latch rail — measurement still owed). Also fixed a real bug in `tools/extract_netlist.py`: it treated both ends of a pin as electrical, which falsely shorted C1 and R7 across their own pins. The connecting end is `Location + PinLength × direction`; the tool now uses it and self-checks that no two-pin part is shorted across itself. Blockers 2 → 3. |
 | v15 | 2026-08-19 | HW-004 expanded with the full mechanism and implementation detail — reference §11. Quantified the actual defect: a 100 mm ground trace is ~100 nH, i.e. **272 Ω at 433 MHz**, against 2.7–5.4 Ω with a plane and a via; DC resistance is a red herring at 5.8 mV. Recorded the design-specific split — GND_SW takes the main pour, GND_RAW takes a small local pour with Q1 placed next to the battery connector — plus the routing flip (signals to Top, currently 227 tracks on Bottom with zero vias) and the slotted-plane trap. No severity or count change. |
 | v14 | 2026-08-19 | Link distance received — 50 m through thick concrete. **HW-003 DECIDED: two LS14500 in parallel, isolated with one `1N5819` per cell, 0.5 A fuse in the pack lead, supplied as a sealed non-serviceable pack; 2-year target kept.** The v13 single-cell recommendation is withdrawn: at 50 m through concrete the required spreading factor is uncertain, one cell only survives SF7 (SF9 gives 1.02×), and two cells cover every plausible outcome — and two cells is the *reversible* choice, since an easy measured link means simply fitting one, whereas the reverse needs a respin. HW-047 updated with the three modelled link scenarios; the worst (4 walls × 25 dB = 159 dB) fails at +20 dBm and SF12, which would be a siting problem not a radio one, so Stage 5 must measure it in a real building. Also recorded: put antenna gain at the mains-powered Hub where it costs no Node battery and helps both directions, and stay at 433 MHz — the earlier 868 MHz suggestion is withdrawn now that concrete penetration matters more than EU compliance. |
