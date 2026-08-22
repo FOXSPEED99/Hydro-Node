@@ -1,10 +1,11 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v15   |   Last updated: 2026-08-19   |   Status: Stage 0 review — 2 blockers; HW-004 implementation detail written up
+Version: v16   |   Last updated: 2026-08-22   |   Status: Stage 0 review — schematic checked against the build sheet; 3 blockers; 12 issues closed by the new schematic
 
 ## STATUS SUMMARY
-Total issues: 52   |   Open: 48   |   Resolved: 3   |   Won't fix: 1
-Blockers remaining: 2
-Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, and the PCB has no ground plane.
+Total issues: 57   |   Open: 41   |   Resolved: 15   |   Won't fix: 1
+Blockers remaining: 3
+Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, the PCB has no ground plane, and the temperature probes have no supply connection.
+Schematic: `Hydro Node Schematic.SchDoc`, checked 2026-08-22 against `BUILD-SHEET.md` — full line-by-line result in `SCHEMATIC-CHECK.md`. 29 of 34 connections correct, 5 faults.
 
 ---
 
@@ -67,6 +68,70 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
+### HW-053 — The DS18B20 probes have no supply: D3 → J2.3 is missing
+- Severity: BLOCKER
+- Status: OPEN — found in the 2026-08-22 schematic check
+- Component / net: `U1.JP7_7 (D3)` unconnected; `J2.3` on net N28
+- Problem: `U1.JP7_7 (D3)` has no wire on it, and `J2.3` — the temperature connector's VCC pin — connects to exactly one thing: `R7.1`, the far end of the 4.7 kΩ pull-up. Build sheet step 14.10 calls for **D3 → the temperature connector's VCC pin**. That wire is not in the schematic.
+- Impact: both DS18B20 probes sit with their VDD pin floating, held only through 4.7 kΩ back to their own data line. The DS18B20 datasheet allows VDD to be a supply of 3.0–5.5 V, or tied to GND for parasite power. Floating is neither, and the part's behaviour there is undefined. In practice: no temperature reading.
+- Second-order impact: the temperature reading is not only a reported value, it is what corrects the ultrasonic distance for the speed of sound. Losing it costs roughly **0.18 % of distance per °C** of uncorrected error — on a 1 m range and a 30 °C swing between night and afternoon on a Syrian roof, that is a systematic error of several centimetres that moves with the time of day.
+- Third-order impact: with VCC floating there is a current path from D4 → R4 → the probe's data pin into the sensor die. The probes are powered through their protection structures whenever D4 drives high. That is not a designed parasite-power connection and it is not safe to leave.
+- Fix: **wire `U1.JP7_7 (D3)` to `J2.3`.** One net. D3 then switches probe power as the build sheet intends, so the probes draw nothing between readings.
+- Notes: the connector's pin order is DATA · GND · VCC, the reverse of the build sheet's VCC · GND · DATA. That is harmless with a hand-made cable but the build-sheet label and the silkscreen (**HW-038**) must be corrected to match, or the cable gets built to the wrong drawing.
+
+---
+
+### HW-054 — Ultrasonic connector pin order does not match the RCWL-1670 pad order
+- Severity: MAJOR
+- Status: OPEN — found in the 2026-08-22 schematic check
+- Component / net: `J3.2` on BATT+, `J3.4` on N27
+- Problem: the RCWL-1670's four pads are printed, left to right, **`GND · RX · TX · +5V`**. J3 is wired GND · **+5V** · TX · **RX** — positions 2 and 4 are swapped relative to the module.
+- Impact: with a straight-through 1:1 cable, **3.6 V lands on the module's RX input** while the module's supply pin is driven by an MCU output through a 100 Ω resistor. The module never powers up, and its RX pin is fed from a rail with no current limit beyond the cable.
+- Why this is worth fixing in the schematic rather than in the cable: a crossed cable makes it work, and a crossed cable is exactly what **HW-001** already flags — an undrawn cross-over harness that nobody can verify at assembly and that fails silently when someone builds the obvious 1:1 version.
+- Fix: **swap the nets on `J3.2` and `J3.4`.** J3 then reads `GND · RX · TX · +5V`, matching the module, matching the build sheet's tape label, and making a straight cable correct.
+- Notes: check the module in hand before the swap. Several different boards carry the RCWL-1670 name with different pad orders; ours is the 4-pad UART version photographed in `Components Images/1-19.jpg`, printed `GND RX TX +5V`. Confirm the silkscreen on the actual module matches before committing the change.
+
+---
+
+### HW-055 — Buzzer LS1 is driven straight off D7 with no series resistor
+- Severity: MAJOR
+- Status: OPEN — found in the 2026-08-22 schematic check
+- Component / net: N23 — `LS1.P` to `U1.JP7_3 (D7)`, direct
+- Problem: the CPT-1255C-090 is an **externally driven** piezo transducer with an electrostatic capacity of **8,400–15,600 pF** (datasheet, at 120 Hz / 1 V). It is wired directly to a logic pin. A capacitor connected straight to an output draws its charging current at the switching edge, limited only by the pin's own output impedance — a peak well above the ATmega328P's **40 mA absolute maximum per pin**.
+- Impact: the energy per edge is tiny (½CV² ≈ 65 nJ) so the pin is unlikely to fail quickly, but the current spike is real, it is repeated at 4 kHz for the whole beep, and it is injected into a supply that has no ground plane under it (**HW-004**) and a 433 MHz receiver a few centimetres away.
+- Fix: **100 Ω in series between D7 and `LS1.P`.** At the rated 4 kHz the transducer's own impedance is around 3 kΩ, so 100 Ω costs no measurable loudness. This is the second 1 kΩ from the build sheet's buy list changing value — it was the LED resistor.
+- Three further points on the substitution, which replaced the LED and its 1 kΩ:
+  1. **Audibility.** Rated output is **70 dB at 10 cm at 3 Vp-p**. Driven single-ended from 3.3 V you get about that in free air. Sealed inside a rooftop enclosure you will get far less — it needs a **sound port**, which is another penetration to seal against **HW-027** and **HW-028**. A port that keeps water out will also cost several dB.
+  2. **State, not events.** A beep says something happened. It cannot say whether the device is currently on, which is the whole substance of **HW-044** — that issue is *not* closed by this change.
+  3. **Optional, if it turns out too quiet:** driving the transducer differentially from two pins gives 6.6 Vp-p instead of 3.3 and roughly +6 dB. Costs one more pin and one more 100 Ω.
+- Question for you: **was dropping the LED deliberate, or did the buzzer replace it by accident?** If commissioning on a roof matters — and it does, since the magnet is the only control — a red LED and the buzzer together is a few cents and one pin.
+
+---
+
+### HW-056 — Four Pro Mini power and ground pins are left unconnected
+- Severity: MINOR
+- Status: OPEN — found in the 2026-08-22 schematic check
+- Component / net: `U1.JP1_4 (VCC)`, `U1.JP1_5 (GND)`, `U1.JP1_6 (GND)`, `U1.JP7_9 (GND_2)`
+- Problem: the Pro Mini symbol exposes two VCC pins and four GND pins. Only `JP6_4 (VCC_1)` and `JP6_2 (GND_1)` are wired.
+- Impact: nothing electrical — these are the same nets inside the module. Two things that do matter:
+  1. Each unconnected GND pad is a **stitching point thrown away**. On a board that already has **HW-004** against it, every extra tie from the module's ground into the pour shortens a return path.
+  2. Four unconnected-pin errors in the DRC report is where a real one hides. The report should be empty except for pins deliberately marked no-connect.
+- Fix: wire `JP1_4` to BATT+ and `JP1_5`, `JP1_6`, `JP7_9` to the switched ground. Place a **No ERC** marker on every pin that is meant to stay open — A3–A7, RAW, DTR, TXO, RXI and the duplicate RST/TXO/RXI — so the DRC report goes to zero and stays meaningful.
+- Not a fault, recorded so it is not "fixed" by mistake: `U1.JP6_3 (RST_1)` is correctly left open. The Pro Mini module carries its own reset pull-up.
+
+---
+
+### HW-057 — The reed symbol has a stray second pin pair parked off-sheet
+- Severity: MINOR
+- Status: OPEN — found in the 2026-08-22 schematic check
+- Component / net: `S1`, `LibReference=REED-SWITCH-NO-D4L29`, `PartCount=2`
+- Problem: S1 carries **four pin records, two of them also numbered 1 and 2**, sitting at roughly **(1060, −180)** — far below and to the right of the drawing, outside the visible sheet, with no wires. The pins that matter are wired correctly at (470, 260) and (470, 320): `S1.2` to the latch supply, `S1.1` through R12 to the flip-flop clock.
+- Impact: two more unconnected-pin errors, and a footprint ambiguity. If the reed footprint has two pads, the netlist has two pin-number collisions and the PCB import may map the wrong one. If it genuinely has four, two pads are unused and nobody has said so.
+- Fix: open the S1 symbol and settle it. If the reed is a two-lead part — which the one in `Components Images/F2293658-01.jpg` is — **delete the stray pair**. If the footprint has four pads, wire them or mark them no-connect explicitly.
+- Notes: the same check is worth running on LS1, which also reports `PartCount=2` but has only one part placed.
+
+---
+
 ### HW-001 — Ultrasonic harness is a cross-over cable with no controlled drawing
 - Severity: MAJOR *(reduced from BLOCKER in v5)*
 - Status: OPEN
@@ -97,33 +162,18 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
-### HW-007 — Ra-02: only one of its three GND pins is connected
+### HW-007 — Ra-02: only one of its four GND pins is connected
 - Severity: MAJOR
-- Status: OPEN
-- Component / net: J1 pins 1 and 2, J2 pin 1 (all GND), J2 pin 8
-- Problem: Extracted from the schematic netlist: the module's ground returns to the board through **J2 pin 8 only**. J1.1, J1.2 and J2.1 are left unconnected. The module's 120 mA TX return current therefore takes one long 1 mm trace.
-- Impact: Supply droop and ground bounce at the RF module during TX, reduced TX power and RX sensitivity, and a large radiating current loop. Compounds HW-004.
-- Recommended fix: Connect all three GND pins to the ground pour. In a 2-layer respin, tie them to the pour with a short, wide connection and stitch around the module footprint.
-- Notes: Also connect J1 pin 4 (RST) — already done via D9 — and consider bringing DIO1 out to a spare pin; some LoRa stacks use DIO1 for RX-timeout and CAD-done, which the pairing protocol (Stage 6) may want.
+- Status: OPEN — **still open in the 2026-08-22 schematic**, and it is four GND pins, not three
+- Component / net: `U3.1`, `U3.2`, `U3.16` unconnected; `U3.9` on the switched ground
+- Problem: Extracted from the schematic netlist: the module's ground returns to the board through **one pin, `U3.9`**. The Ra-02 symbol has four GND pins — 1, 2, 9 and 16 — and three of them are left open. The module's 120 mA TX return current therefore takes one long trace.
+- Impact: Supply droop and ground bounce at the RF module during TX, reduced TX power and RX sensitivity, and a large radiating current loop. Compounds HW-004 directly — one ground pin and no pour under it is the worst combination available.
+- Recommended fix: Connect **all four** GND pins to the switched-ground pour, each with its own wire rather than daisy-chained. In the 2-layer layout, tie them to the pour with short wide connections and stitch around the module footprint.
+- Notes: `U3.4 (RESET)` is connected via D9 and `U3.5 (DIO0)` via D2 — both correct in the current schematic. DIO1–DIO5 remain open; consider bringing DIO1 out to a spare pin, since some LoRa stacks use it for RX-timeout and CAD-done, which the pairing protocol (Stage 6) may want.
+- Note on the count (v16): this issue originally said "three GND pins" based on the earlier schematic's connector symbols. The current Ra-02 symbol has four. Nothing about the defect changed — one is connected either way.
 
 ---
 
-### HW-009 — C3 (2200 µF aluminium electrolytic) is the wrong part in the wrong place
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: C3, VBAT / GND_SW
-- Problem: Three separate problems with this one part:
-  1. **Leakage.** Aluminium electrolytics leak continuously and the leakage roughly doubles every 10 °C. A 2200 µF part at 3.6 V will leak on the order of 5–30 µA at 25 °C and can reach 50–200 µA at a 60 °C rooftop enclosure temperature. That is a permanent, unswitched drain on the 2-year budget, and it is the second-largest sleep-current item after HW-002.
-  2. **Cold ESR.** Aluminium electrolytic ESR rises 5–20× at −10 to −20 °C. The cap is least effective exactly when the cell is weakest, which is the opposite of what you need.
-  3. **It cannot do the job it was added for.** To hold a 120 mA TX burst within 0.2 V for even a short 60 ms SF7 packet you would need ~36,000 µF. 2200 µF holds that current for about 3.7 ms. **The battery supplies the TX current, not C3.** C3 only softens the first few milliseconds of the current edge.
-- Impact: Threatens NFR-1 directly, and gives false confidence that the Li-SOCl₂ pulse problem is solved when it is not.
-- Recommended fix: Remove C3 and replace the function properly:
-  - **Local bulk:** 100–220 µF of **X5R/X7R ceramic** (e.g. 2× 100 µF 6.3 V 1210) placed at the Ra-02 supply pins. Near-zero leakage, stable ESR over temperature, no wear-out. Sized to cover the current edge, which is all a capacitor can do here.
-  - **Pulse support for the cell:** if measurement shows the cell voltage dipping too far during TX, add a **hybrid layer capacitor (HLC) or a 0.1–0.5 F supercapacitor** charged through a current-limiting resistor. This is the standard Li-SOCl₂ + LoRa arrangement and it is the correct answer to the pulse problem. Budget the supercap's own leakage (typically 5–50 µA) into the power model before committing — it may cost more than it saves.
-- Notes (v6): The arithmetic is now definitive, and it also answers the "one cell plus a big capacitor" proposal under HW-003. A 60 ms TX burst at 120 mA moves **7.2 mC**. Into 470 µF that is a 15 V collapse; into 2200 µF, 3.3 V; you would need **36,000 µF** to hold the rail within 0.2 V. No bulk capacitor you can fit in this enclosure carries a LoRa transmission. C3's only real function is smoothing the first few milliseconds of the current edge, and a few hundred µF of ceramic does that better than 2200 µF of leaky aluminium. Only a **supercapacitor** (0.1 F and up, low ESR, behind a series charge resistor) can actually carry the burst — see `HYDRO-NODE-REFERENCE.md` §10.3.
-- Notes: First measure. Put a scope on VBAT during a real TX burst at −5 °C and at 50 °C, on a cell that has been sitting idle for a week (see HW-032). If the dip is acceptable, you may not need any pulse-support part at all and can delete C3 outright, which is the cheapest possible fix.
-
----
 
 ### HW-012 — No ESD or surge protection on the three external sensor cables
 - Severity: MAJOR
@@ -144,39 +194,7 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
-### HW-013 — Decoupling is wrong: only two bypass caps, neither local to any device
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: C4 (VBAT–GND_RAW), C5 (VBAT–GND_SW); C1 and C2 are not decoupling
-- Problem: The BOM's four 100 nF caps are used as: C1 = reed debounce, C2 = power-on-reset coupling, C4 = raw-battery bypass, C5 = switched-rail bypass. So the entire board has **two** bypass capacitors, and from the PCB layout both sit at the far left, physically distant from the CD4013 (right edge), the Pro Mini (lower left) and the Ra-02 headers (top). **There is no decoupling at all at the Ra-02 supply pins** — the highest di/dt load on the board.
-- Impact: Rail collapse and ringing during TX; unreliable SPI at the module; noise coupled into the echo timing. Compounds HW-004 and HW-009.
-- Recommended fix: Add, placed within a few millimetres of the pin they serve:
-  - Ra-02 3V3 (J1.3): 100 nF + 10 µF ceramic, with the return going straight into the pour.
-  - Pro Mini VCC: 100 nF.
-  - CD4013 VDD (pin 14): 100 nF — this one is genuinely absent today.
-  - Ultrasonic supply at J5: 100 nF + 10 µF (it draws 6 mA in bursts down a cable).
-- Notes: Ceramic X7R throughout; leakage is negligible so this costs nothing in the power budget.
 
----
-
-### HW-014 — Reed latch has no series resistor and no effective debounce
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: S1, R3 (10 kΩ), C1 (100 nF), U1 pin 3 (CLOCK1)
-- Problem: **The latch topology itself is correct** — I traced it and it is a proper toggle (see Notes). The implementation has two defects:
-  1. **No series resistance between S1 and the C1/CLOCK1 node.** When the reed closes it dumps VBAT straight into C1 with only wiring resistance in the loop. Repeated hot-switching into a capacitor is the classic way to weld or pit reed contacts.
-  2. **Debounce is inadequate.** Contact bounce, and the multiple make/break events you get when a magnet is swept past rather than placed, each produce a clean rising edge at CLOCK1 — and each rising edge toggles the flip-flop. An even number of toggles leaves the device in the state it started in.
-- Impact: The user brings the magnet up, the LED does something ambiguous, and the device may be OFF when they think it is ON — on a roof, sealed, with no other feedback. Also a slow degradation path for S1.
-- Recommended fix:
-  - Add **R_series ≈ 10 kΩ** between S1 and the C1/R3 node. This limits contact current and gives a defined attack time constant.
-  - Once you add that series resistor, **both** edges at CLOCK1 become slow (attack ≈ 1 ms, decay ≈ 1 ms). Feed the node through a **Schmitt-trigger buffer (74LVC1G17, non-inverting, Icc typically well under 1 µA)** into CLOCK1 rather than driving the flip-flop directly. This both cleans the bounce and guarantees a fast edge into the clock input.
-  - Use a **non-inverting** buffer so the toggle still happens on magnet *approach*, not on removal.
-- Notes (v4): The Schmitt buffer is **required again** — the v3 PRE/CLR proposal that would have removed it is withdrawn (see HW-043). This issue is now fully absorbed into **HW-043**, which specifies the buffer, the inverted reed connection and the new RC values. The contact-wear withdrawal below still stands.
-- Notes (v3, superseded): **Largely superseded by HW-043.** If the latch moves from edge-triggered CLOCK to asynchronous PRE/CLR, contact bounce becomes harmless (each bounce simply re-asserts ON) and the Schmitt buffer is deleted. The series resistor is still worth fitting because it costs nothing, but the **contact-wear argument in this issue is withdrawn** — at roughly 5 operations over the product's life, hot-switching into C1 is not a wear concern. You were right to push back on that.
-- Notes (v2): The Schmitt buffer requirement is now coupled to the U1 part choice — see **HW-041**. If U1 becomes an **SN74HCS74**, every input is already Schmitt-triggered with no transition-rate requirement, and the separate buffer is deleted (the series resistor and the RC are still required). If U1 stays **CD4013BE** or becomes a plain **74HC74**, the buffer is mandatory — and more so for the 74HC74, which is the least tolerant of slow edges of the three.
-- Notes: **Verification of the latch as drawn, per your Section 6 item 6.** I traced it from the extracted netlist: U1 is wired as a T-flip-flop (D1 ← Q1̄, pin 5 ← pin 2), CLOCK1 ← reed node, Q1 (pin 1) → R2 1 kΩ → Q1 gate, R1 1 MΩ gate pulldown to the raw battery return. SET1, SET2, RESET2, CLOCK2, D2 are all correctly tied to VSS; the unused half's outputs are correctly left open. C2 (100 nF from VBAT) with R4 (100 kΩ to VSS) is a correct **active-high power-on-reset** giving ~10 ms — so the device powers up OFF when a cell is first fitted. **Toggle logic is correct and the OFF state is genuinely clean:** with Q1 off, every resistive path (R1, R3, R4) sits at 0 V across it, C2 and C4 are ceramic, and the only OFF-state current is the MOSFET's leakage plus the CD4013's quiescent (< 1 µA at 25 °C). I have no objection to the concept — only to the debounce, the contact protection, and the placement (HW-015).
-
----
 
 ### HW-015 — Reed switch is mounted in the centre of the PCB
 - Severity: MAJOR
@@ -189,17 +207,6 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
-### HW-016 — Blue LED has no forward-voltage headroom on a 3.0–3.6 V rail
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: DS1, R5, U2.D8
-- Problem: The BOM specifies a **blue** 3 mm LED (confirmed in the component photos), while the schematic symbol is a red LED. A blue LED has a forward voltage of roughly 2.7–3.2 V. The rail is 3.6 V falling to ~3.0 V over the cell's life, and the ATmega output stage drops another ~0.2 V. Through the schematic's 330 Ω that gives ~2 mA when fresh and essentially nothing at end of life — the status indicator goes dark exactly when you most need to know the battery is low.
-- Impact: The Node's only local feedback stops working. Compounds HW-014 (ambiguous on/off feedback).
-- Recommended fix: Use a **red or yellow LED (Vf ≈ 1.8–2.1 V)**, which leaves 1.0–1.8 V across the resistor across the whole cell life. Size R5 for 2 mA (it only ever flashes briefly), so ~680 Ω–1 kΩ. Make the schematic, the BOM and the fitted part agree.
-- Notes (v4): **This is no longer cosmetic.** The LED is now the confirmation mechanism for the magnet on/off control (HW-043, HW-044), so a blue LED going dark at ~3.0 V means the user-facing control loses its feedback exactly as the battery ages — the point at which someone is most likely to be on the roof investigating. Treat the change to a red or yellow part as required, not optional.
-- Notes: There is also a **BOM/schematic value mismatch** here — the BOM lists a 220 Ω resistor, the schematic says 330 Ω. Whichever survives, one document is wrong today.
-
----
 
 ### HW-017 — IRLZ44N is the wrong MOSFET, in the wrong package, in the wrong place
 - Severity: MAJOR
@@ -215,44 +222,8 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
-### HW-018 — Echo is on D7 instead of D8, so hardware input capture is unavailable
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: J5 pin 3 (Echo) → U2.D7; U2.D8 → R5/DS1
-- Problem: The ATmega328P's **Input Capture pin (ICP1) is PB0 = Arduino D8**, which this design uses for the status LED. Echo went to D7, an ordinary GPIO, so the echo pulse can only be measured in software (`pulseIn` or a pin-change interrupt).
-- Impact: `pulseIn` at 8 MHz resolves to roughly ±4 µs, and a pin-change ISR adds 1–2 µs of latency jitter. That is only ±0.7 mm of distance error so it is not fatal — but ICP1 gives a hardware timestamp at 125 ns resolution with zero interrupt-latency jitter, it is completely free, and it lets the MCU sleep during the flight time instead of spinning in a blocking loop (which also saves awake energy). Given NFR-2 explicitly drives this design, leaving a free hardware timer on the table is not defensible.
-- Recommended fix: **Swap them — Echo to D8, LED to D7.** One net change in the respin, no cost, no extra parts.
-- Notes: This also means the ultrasonic measurement no longer blocks the CPU, which shortens the awake window and helps NFR-1.
 
----
 
-### HW-020 — Flow input D5 has no external pull-up, no filter and no series protection
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: J4 pin 1 → U2.D5
-- Problem: D5 goes straight from the MCU to a connector and out on a cable to the fill pipe, with nothing on it. The design relies entirely on the ATmega's internal pull-up.
-- Impact: Three separate problems. (a) If firmware leaves the internal pull-up enabled during sleep while the switch is closed, that is **~110 µA continuous** — on its own about half of the entire allowable average current for the 2-year target. (b) An unfiltered mechanical contact on a long cable will produce chatter and pick up noise. (c) No series protection (see HW-012).
-- Recommended fix: Add an **external 1 MΩ pull-up** to the switched rail plus a **100 nF** cap to ground at the connector (giving a 100 ms RC filter, which is fine for a flow signal that changes on a timescale of seconds), and a **100 Ω** series resistor at the MCU pin. 1 MΩ costs 3.6 µA when the switch is closed, and the internal pull-up can then stay off permanently. Combine with the wetting-pulse scheme from HW-019 for the actual sampling.
-- Notes: Firmware must still be explicit: internal pull-up **disabled** before sleeping, every time.
-
----
-
-### HW-021 — The MCU cannot read the reed line and cannot command its own shutdown
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: U1 (CD4013), S1 node, U2
-- Problem: The latch is entirely autonomous. The MCU has no connection to the reed node and no connection to the CD4013's RESET, so it cannot tell whether a magnet is present, cannot detect a magnet *gesture* (e.g. hold for 10 s), and cannot turn itself off.
-- Impact: Blocks several things you will want later:
-  - No magnet-based user input beyond raw on/off — which is what a local unpair needs (HW-022).
-  - No firmware-commanded shutdown on critical battery, which for a Li-SOCl₂ cell matters (deep-discharging past the plateau is where cells get unhappy).
-  - No way for firmware to log or report an unexpected power-cycle.
-- Recommended fix: Two wires, both to currently-free pins:
-  - **Reed sense:** reed node (after the Schmitt buffer from HW-014) → A0. Free.
-  - **Firmware shutdown:** A1 → a small-signal diode (cathode at A1) or a resistor → CD4013 RESET1, so driving A1 high resets the latch and kills the load. Must not fight the POR network — put a 100 kΩ in series and check the RC interaction with C2/R4.
-- Notes (v3): **DECIDED — the hardware latch stays.** You argued that a firmware-independent off is required on a sealed device, and that is the stronger position: a hung or crashed MCU can still be switched off with a magnet, which the MCU-sleep alternative cannot offer. The ~5 µA saving is not worth that. This issue therefore shrinks to just adding the two wires (reed sense + firmware shutdown), and those are now folded into **HW-043**. The alternative below is recorded for history only — do not implement it.
-- Notes: Alternative architecture, **rejected in v3**, recorded for history: delete the CD4013, Q1, R1, R2 and C2 entirely. Make the MCU always powered, put it in power-down (~4.5 µA) as the "OFF" state, and switch the ultrasonic and LoRa rails with small load switches. The reed then just drives a wake interrupt. This removes a whole subsystem, gives firmware full control over the on/off state, and costs ~5 µA in storage (≈88 mAh over a year on shelf — under 2 % of the pack). The one thing you lose is a true zero-power OFF for long-term storage. **Your call — tell me which way you want to go and I will rework the affected issues.**
-
----
 
 ### HW-022 — No local unpair or recovery path on a sealed Node
 - Severity: MAJOR
@@ -441,58 +412,7 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
-### HW-041 — Logic family for the power-latch flip-flop: CD4013BE vs 74HC74 vs SN74HCS74
-- Severity: MAJOR *(raised from MINOR in v3)*
-- Status: IN DISCUSSION
-- Component / net: U1
-- Problem (v3, primary): **The CD4013B's 3 V minimum supply has no margin against the LoRa TX droop.** U1 is powered from the raw battery, upstream of the MOSFET, so it sees the full sag when the Ra-02 draws up to 120 mA — and it has no decoupling capacitor at all (the gap noted in HW-013). Fresh cells at ~0.1 Ω parallel impedance sag ~12 mV, which is nothing; an aged, passivated or cold pack at ~5 Ω sags ~600 mV, which on top of a 3.2 V end-of-life cell puts U1 at ~2.6 V — below its minimum. See **HW-042** for why the consequence is severe. Credit for this one goes to you, not to the v1 review.
-- Problem (v1, secondary): The CD4013BE is being run at 3.0–3.6 V. That is inside its recommended 3–18 V supply range, but **outside every characterisation table in the datasheet** — CD4013B DC and AC parameters are specified at V_DD = 5 V, 10 V and 15 V only. So no timing, drive or threshold parameter is guaranteed at the voltage this product actually runs at. This is the same class of defect as HW-017 (the IRLZ44N driven at an uncharacterised V_GS): it will work on the bench, and nothing in the datasheet says it must.
-- Impact: No guaranteed operating point for the part that decides whether the device is on or off. Low probability of failure, but it is not a defensible production position, and it is cheap to fix.
-- Recommended fix, in order of preference:
-  0. **74HC74 — CONFIRMED, part already on the bench (Toshiba TC74HC74AP, DIP-14).** Specified 2–6 V, so it doubles the droop margin against the CD4013BE and closes the characterisation gap. Under **HW-043** the latch no longer uses the CLOCK input at all, which removes the one area where the 74HC74 was the weaker part. **Fit this.** It is not sufficient on its own — HW-042 is still required.
-  1. **SN74HCS74 (still the better production part, if a non-DIP package is acceptable).** A 74HC74 with **Schmitt-trigger action on every input** and, per TI, **no input signal transition-rate requirement**. Specified 2–5.5 V, so 3.0–3.6 V is squarely inside the characterised range. This single substitution fixes the uncharacterised-operating-point problem *and* removes the separate Schmitt buffer that HW-014 would otherwise require. Only drawback: TSSOP/SOIC only, no DIP — which is fine, because HW-026 and HW-037 want SMD anyway, but it means it cannot go on the breadboard today.
-  2. **Keep the CD4013BE — rejected in v3.** Best quiescent-current specification of the three on paper and the most tolerant of slow edges, but the 3 V minimum against a measured-unknown droop is not a risk worth carrying when a 2 V part is already on the bench.
-  Also required whichever part wins: a **100 nF decoupling capacitor directly across pins 14 and 7** (this is still missing — HW-013).
-- Notes: **Do not fit a 74HCT74.** It is one letter different, physically identical, and will not work here: HCT has TTL input thresholds and needs V_CC = 4.5–5.5 V. Check the marking on the bench part before wiring anything.
-- Notes (v4): With HW-043 withdrawn back to a clock-driven toggle, the 74HC74's weaker slow-edge tolerance **is relevant again** — but it is fully handled by the Schmitt buffer that HW-043 now mandates, which presents a fast edge to CLOCK regardless of the family. The part decision is unchanged: fit the 74HC74 for its 2 V minimum.
-- Notes (v3): The v2 note that this "closes no blocker and is a production-quality item" was wrong — it understated the droop risk. Corrected above. The v1/v2 concern that the 74HC74 is less edge-tolerant than the CD4013BE was correct in itself but is now irrelevant, because HW-043 stops using the clock input. It is also moot if the architecture decision under HW-021 goes the "delete the flip-flop entirely" way — **settle HW-021 first**, because it may delete U1 rather than replace it.
-- Notes: Pin-for-pin migration detail (CD4013BE → 74HC74/HCS74) is in `HYDRO-NODE-REFERENCE.md` section 7. The two parts are both 14-pin dual D flip-flops but the pinouts are **not** compatible, and the set/reset polarity is **inverted** (CD4013 SET/RESET are active HIGH; 74HC74 PRE/CLR are active LOW). It is not a socket swap.
 
----
-
-### HW-042 — Latch supply has no hold-up; a TX droop can switch the device off permanently in the field
-- Severity: MAJOR
-- Status: OPEN
-- Component / net: U1 pin 14, VBAT
-- Problem: U1 is powered directly from the raw battery with **no local decoupling and no hold-up**. During a LoRa TX burst the Ra-02 draws up to 120 mA, and the cell's internal impedance — which rises with age, with passivation and with falling temperature — drops the rail. If that dip takes U1 below its minimum supply, the flip-flop can lose state.
-- Impact: **This is the highest-consequence failure mode on the list after the six blockers**, because it is self-latching and self-concealing. The sequence: the latch glitches → Q goes low → the MOSFET opens → the load disappears → the rail instantly recovers → **and the device stays off.** Nothing turns it back on. A Node dies silently on a roof and needs a physical site visit with a magnet. Worse, it is age- and temperature-correlated, so it will hit a whole fleet at roughly the same point in life and preferentially in cold weather. From the Hub's point of view it is indistinguishable from a Node that has gone out of range.
-- Recommended fix: Give the latch its own protected rail. Two parts:
-  - A **Schottky diode** (BAT54, 1N5819 or similar low-Vf part) from VBAT to U1 pin 14.
-  - A **10 µF X7R ceramic** from U1 pin 14 to GND_RAW, physically at the IC.
-  U1 draws well under a microamp, so over a 60 ms TX burst the hold-up cap sags by roughly 6 mV (ΔV = I·t/C). The diode blocks the droop propagating back into the latch. Forward drop at these currents is ~0.15 V, so even at a 3.0 V end-of-life cell the latch sees ~2.85 V — comfortably above the 74HC74's 2 V minimum (**HW-041**), and above the CD4013BE's 3 V minimum only marginally, which is a second reason to make the part change.
-  This also finally provides the decoupling capacitor at U1 that **HW-013** identified as missing.
-- Notes: **This issue is currently unquantified and must be measured before Stage 7 can sign off.** Scope VBAT at U1 pin 14 during a real +18 dBm transmission, on **cells that have been left idle for at least a week** so passivation is present, at room temperature and at the coldest temperature the product will see. Record the minimum. If the measured floor is below the fitted logic's minimum supply, **this escalates to BLOCKER**.
-- Notes: The same droop also affects the ATmega328P (which needs ≥2.4 V at 8 MHz, and will reset if the BOD fuse is set to 2.7 V) and the Ra-02 (1.8 V minimum, so it is fine). The difference is that an MCU reset is recoverable — it reboots and carries on — whereas a lost latch state is not.
-
----
-
-### HW-043 — Reed input needs real debounce; magnet retains full on/off control
-- Severity: MAJOR
-- Status: IN DISCUSSION
-- Component / net: S1, R3, C1, U1 CLOCK input, one new MCU net
-- Problem: The reed input is filtered only by R3 × C1 = 10 kΩ × 100 nF = **1 ms**, which is the same order as reed contact bounce. In a **toggle** latch every surviving bounce edge inverts the state, so the outcome of a deliberate magnet gesture is not deterministic — roughly a coin flip on each actuation. The failure is not "someone waves a magnet by accident"; it is "the installer brings the magnet to switch the Node on, two bounce edges get through, and it stays off."
-- Impact: Ambiguous on/off on a sealed rooftop device. Also, the present 10 kΩ pull-down means a magnet left resting on the enclosure draws **360 µA continuously** — on its own more than the entire 251 µA average budget for NFR-1.
-- Recommended fix — **keep magnet control of both on and off** (see the v4 note below for why the earlier proposal was withdrawn). Two parts:
-  - Insert an **inverting Schmitt-trigger buffer (74LVC1G14 or similar)** between the reed node and U1's CLOCK input. Select the specific part on quiescent current — 74LVC1G14 is typically well under a microamp but its datasheet maximum is around 10 µA over temperature, which is 4 % of the budget; an ultra-low-power alternative such as the 74AUP1G14 should be compared before committing. **Verify I_CC at 3.6 V from the vendor datasheet.**
-  - **Invert the reed connection**: reed from the node to GND_RAW through **1 kΩ**, with a **1 MΩ** pull-up to the latch rail and **1 µF** on the node. Delete R3.
-- Recommended fix — resulting behaviour: attack ≈ 1 ms, release ≈ 1 s. Bounce and magnet-sweep chatter are fully swallowed; two contacts would have to be **more than ~3 s apart** to register as two events, which is a deliberate visible double-tap rather than bounce. The buffer must be **inverting** because the node now goes low on magnet approach, and an inversion is what restores a rising edge at CLOCK — i.e. the device still toggles when the magnet arrives, not when it leaves.
-- Recommended fix — standby current: the 1 MΩ pull-up drops the magnet-resting-on-enclosure current from **360 µA to 3.6 µA**, a 100× improvement, and removes that risk from the NFR-1 budget entirely.
-- Recommended fix — one additional wire, **not** for power control: tap the **buffer output** to a spare MCU input (A0, through 100 Ω). Zero extra parts and no loading of the 1 MΩ node, since the buffer output is a clean logic level that is high for as long as the magnet is present. This gives firmware the magnet gesture it needs for local unpair (**HW-022**) and for the shutdown warning in **HW-044**. Optionally also wire an MCU line to U1's reset for **automatic low-battery shutdown only** (**HW-025**) — never as the user-facing off path.
-- Notes (v4): **The v3 proposal — asynchronous PRE/CLR with firmware-only OFF — is WITHDRAWN, and you were right to challenge it.** It contained a contradiction: HW-021 rejects the MCU-sleep architecture precisely because a hung MCU must still be switchable off with a magnet, and then v3 proposed making OFF firmware-dependent, which reintroduces exactly that failure. Magnet control of both directions is the correct requirement and it stands.
-- Notes (v4): Your LED indicator also changes the analysis in favour of the toggle. A blink-on-startup turns an ambiguous toggle into a **self-correcting** one — the installer sees no blink, taps again. That converts a silent failure into a visible retry and defuses most of the original concern. It is why this issue is now "add proper debounce" rather than "change the topology". The dependency it creates is covered in HW-016 and HW-044.
-- Notes: A hardware-timed alternative was evaluated and **not recommended**: tap = ON via PRE, hold ~3 s = OFF via an RC timer into CLR, keeping both directions firmware-independent while making bounce structurally impossible. It works, but it needs a Schmitt inverter, a low-leakage timing capacitor, two resistors and a steering diode — about five extra parts and a tuning exercise — for a control that is used roughly five times in the product's life. The complexity does not earn its place. Recorded in `HYDRO-NODE-REFERENCE.md` §9 in case the field data later says otherwise.
-
----
 
 ### HW-045 — Tank-wall penetration and in-tank connector for the sensor harness
 - Severity: MAJOR
@@ -686,16 +606,6 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
-### HW-034 — C3 voltage rating mismatch between BOM and supplied part
-- Severity: MINOR
-- Status: OPEN
-- Component / net: C3
-- Problem: The BOM and schematic both specify 2200 µF **16 V**; the component photo shows a 2200 µF **25 V** part. Electrically the 25 V part is fine, but the can diameter differs (typically 13 mm vs 10 mm), so it may not match the PCB footprint or the enclosure clearance.
-- Impact: Fit problem at assembly; documentation does not describe the built article.
-- Recommended fix: Moot if HW-009 is adopted and C3 is deleted or replaced with ceramics. If C3 survives in any form, make the BOM, schematic, footprint and purchased part agree, and specify the diameter and lead pitch explicitly.
-- Notes: Flagged mainly because it is a symptom — the BOM and the built board have drifted apart in at least three places (this, HW-016's LED colour, and HW-016's resistor value). Worth a full reconciliation pass.
-
----
 
 ### HW-035 — Unused MCU I/O left floating will add sleep current if not configured
 - Severity: MINOR
@@ -719,17 +629,6 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 
 ---
 
-### HW-037 — CD4013BE in a plastic DIP
-- Severity: MINOR
-- Status: OPEN
-- Component / net: U1
-- Problem: The CD4013BE is a 14-pin plastic DIP. If it is socketed (as the through-hole build style suggests), the socket contacts oxidise over years in a humid, thermally-cycling outdoor enclosure, and vibration can back the part out.
-- Impact: An intermittent contact in the power-latch IC means the device randomly turns off, or fails to turn on, in the field.
-- Recommended fix: Use the **SOIC-14 version soldered directly** (CD4013BM or equivalent). If U1 survives the architecture decision under HW-021 at all, do not socket it. Confirm the quiescent current and the operating temperature range against your chosen vendor's datasheet — the family covers −55 °C to +125 °C and 3–18 V, which is comfortable here, but I want the specific part's Iq over temperature in the power model rather than an assumption.
-- Notes: I also want to check one specification I could not retrieve during this review: most CD4013B datasheets state a **maximum clock input rise/fall time** (I believe around 15 µs at V_DD = 5 V, but treat that as unverified until you or I read the vendor datasheet). As drawn today the *active* rising edge at CLOCK1 is fast, so the spec is probably not violated — but the moment you add the series resistor from HW-014 it will be, which is exactly why HW-014 also calls for a Schmitt-trigger buffer. **Please confirm the number from your part's datasheet.**
-- Notes (v2): Partly superseded by **HW-041**. The package question here (SOIC, not socketed DIP) stands regardless of which logic family wins.
-
----
 
 ### HW-038 — Connector functions are not on the silkscreen; DS18B20 wire order is undocumented
 - Severity: MINOR
@@ -829,10 +728,205 @@ Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without bl
 - Residual, handled as a production-test step rather than an open issue: during factory assembly, before the lid goes on, both the battery and the sensor connectors are briefly accessible on the same bare board. Put a polarity-and-position check in the functional test (**HW-029**) so a mis-plugged board is caught at test rather than at the customer. Physical separation on the PCB — battery connector well away from the sensor connector row — makes even that unlikely, and is worth doing in the respin at zero cost.
 
 
+### HW-009 — C3 (2200 µF aluminium electrolytic) is the wrong part in the wrong place  ✅ RESOLVED (v16)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: C3, VBAT / GND_SW
+- Problem: Three separate problems with this one part:
+  1. **Leakage.** Aluminium electrolytics leak continuously and the leakage roughly doubles every 10 °C. A 2200 µF part at 3.6 V will leak on the order of 5–30 µA at 25 °C and can reach 50–200 µA at a 60 °C rooftop enclosure temperature. That is a permanent, unswitched drain on the 2-year budget, and it is the second-largest sleep-current item after HW-002.
+  2. **Cold ESR.** Aluminium electrolytic ESR rises 5–20× at −10 to −20 °C. The cap is least effective exactly when the cell is weakest, which is the opposite of what you need.
+  3. **It cannot do the job it was added for.** To hold a 120 mA TX burst within 0.2 V for even a short 60 ms SF7 packet you would need ~36,000 µF. 2200 µF holds that current for about 3.7 ms. **The battery supplies the TX current, not C3.** C3 only softens the first few milliseconds of the current edge.
+- Impact: Threatens NFR-1 directly, and gives false confidence that the Li-SOCl₂ pulse problem is solved when it is not.
+- Recommended fix: Remove C3 and replace the function properly:
+  - **Local bulk:** 100–220 µF of **X5R/X7R ceramic** (e.g. 2× 100 µF 6.3 V 1210) placed at the Ra-02 supply pins. Near-zero leakage, stable ESR over temperature, no wear-out. Sized to cover the current edge, which is all a capacitor can do here.
+  - **Pulse support for the cell:** if measurement shows the cell voltage dipping too far during TX, add a **hybrid layer capacitor (HLC) or a 0.1–0.5 F supercapacitor** charged through a current-limiting resistor. This is the standard Li-SOCl₂ + LoRa arrangement and it is the correct answer to the pulse problem. Budget the supercap's own leakage (typically 5–50 µA) into the power model before committing — it may cost more than it saves.
+- Notes (v6): The arithmetic is now definitive, and it also answers the "one cell plus a big capacitor" proposal under HW-003. A 60 ms TX burst at 120 mA moves **7.2 mC**. Into 470 µF that is a 15 V collapse; into 2200 µF, 3.3 V; you would need **36,000 µF** to hold the rail within 0.2 V. No bulk capacitor you can fit in this enclosure carries a LoRa transmission. C3's only real function is smoothing the first few milliseconds of the current edge, and a few hundred µF of ceramic does that better than 2200 µF of leaky aluminium. Only a **supercapacitor** (0.1 F and up, low ESR, behind a series charge resistor) can actually carry the burst — see `HYDRO-NODE-REFERENCE.md` §10.3.
+- Notes: First measure. Put a scope on VBAT during a real TX burst at −5 °C and at 50 °C, on a cell that has been sitting idle for a week (see HW-032). If the dip is acceptable, you may not need any pulse-support part at all and can delete C3 outright, which is the cheapest possible fix.
+- **Resolution (v16):** the 2200 µF part is gone from the schematic. Bulk decoupling at the radio is now **C7 100 µF 10 V** and **C8 10 µF 50 V**, both sized to the SX1278 transmit burst rather than to a mains supply, and both drawn at the Ra-02 socket where the burst is drawn. Verified in `SCHEMATIC-CHECK.md` stage 13.
+
+---
+
+### HW-013 — Decoupling is wrong: only two bypass caps, neither local to any device  ✅ RESOLVED (v16)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: C4 (VBAT–GND_RAW), C5 (VBAT–GND_SW); C1 and C2 are not decoupling
+- Problem: The BOM's four 100 nF caps are used as: C1 = reed debounce, C2 = power-on-reset coupling, C4 = raw-battery bypass, C5 = switched-rail bypass. So the entire board has **two** bypass capacitors, and from the PCB layout both sit at the far left, physically distant from the CD4013 (right edge), the Pro Mini (lower left) and the Ra-02 headers (top). **There is no decoupling at all at the Ra-02 supply pins** — the highest di/dt load on the board.
+- Impact: Rail collapse and ringing during TX; unreliable SPI at the module; noise coupled into the echo timing. Compounds HW-004 and HW-009.
+- Recommended fix: Add, placed within a few millimetres of the pin they serve:
+  - Ra-02 3V3 (J1.3): 100 nF + 10 µF ceramic, with the return going straight into the pour.
+  - Pro Mini VCC: 100 nF.
+  - CD4013 VDD (pin 14): 100 nF — this one is genuinely absent today.
+  - Ultrasonic supply at J5: 100 nF + 10 µF (it draws 6 mA in bursts down a cable).
+- Notes: Ceramic X7R throughout; leakage is negligible so this costs nothing in the power budget.
+- **Resolution (v16):** the schematic now carries **nine 100 nF**, one per device — C5 at the Pro Mini, C6 at the Ra-02, C2 at the ultrasonic connector, C10 at the 74HC74, C4 across BATT+/BATT-, C11 and C12 on the two latch nodes, C1 on the flow input, C3 general — plus C8 10 µF and C7 100 µF as bulk at the radio. Verified in `SCHEMATIC-CHECK.md`.
+- **Condition carried into the PCB stage:** a schematic cannot express placement. Each of these is only worth fitting if it is laid out at the device it belongs to, with the shortest possible loop back to the ground pour. That requirement is now on the pre-PCB list in `SCHEMATIC-CHECK.md`.
+
+---
+
+### HW-014 — Reed latch has no series resistor and no effective debounce  ✅ RESOLVED (v16)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: S1, R3 (10 kΩ), C1 (100 nF), U1 pin 3 (CLOCK1)
+- Problem: **The latch topology itself is correct** — I traced it and it is a proper toggle (see Notes). The implementation has two defects:
+  1. **No series resistance between S1 and the C1/CLOCK1 node.** When the reed closes it dumps VBAT straight into C1 with only wiring resistance in the loop. Repeated hot-switching into a capacitor is the classic way to weld or pit reed contacts.
+  2. **Debounce is inadequate.** Contact bounce, and the multiple make/break events you get when a magnet is swept past rather than placed, each produce a clean rising edge at CLOCK1 — and each rising edge toggles the flip-flop. An even number of toggles leaves the device in the state it started in.
+- Impact: The user brings the magnet up, the LED does something ambiguous, and the device may be OFF when they think it is ON — on a roof, sealed, with no other feedback. Also a slow degradation path for S1.
+- Recommended fix:
+  - Add **R_series ≈ 10 kΩ** between S1 and the C1/R3 node. This limits contact current and gives a defined attack time constant.
+  - Once you add that series resistor, **both** edges at CLOCK1 become slow (attack ≈ 1 ms, decay ≈ 1 ms). Feed the node through a **Schmitt-trigger buffer (74LVC1G17, non-inverting, Icc typically well under 1 µA)** into CLOCK1 rather than driving the flip-flop directly. This both cleans the bounce and guarantees a fast edge into the clock input.
+  - Use a **non-inverting** buffer so the toggle still happens on magnet *approach*, not on removal.
+- Notes (v4): The Schmitt buffer is **required again** — the v3 PRE/CLR proposal that would have removed it is withdrawn (see HW-043). This issue is now fully absorbed into **HW-043**, which specifies the buffer, the inverted reed connection and the new RC values. The contact-wear withdrawal below still stands.
+- Notes (v3, superseded): **Largely superseded by HW-043.** If the latch moves from edge-triggered CLOCK to asynchronous PRE/CLR, contact bounce becomes harmless (each bounce simply re-asserts ON) and the Schmitt buffer is deleted. The series resistor is still worth fitting because it costs nothing, but the **contact-wear argument in this issue is withdrawn** — at roughly 5 operations over the product's life, hot-switching into C1 is not a wear concern. You were right to push back on that.
+- Notes (v2): The Schmitt buffer requirement is now coupled to the U1 part choice — see **HW-041**. If U1 becomes an **SN74HCS74**, every input is already Schmitt-triggered with no transition-rate requirement, and the separate buffer is deleted (the series resistor and the RC are still required). If U1 stays **CD4013BE** or becomes a plain **74HC74**, the buffer is mandatory — and more so for the 74HC74, which is the least tolerant of slow edges of the three.
+- Notes: **Verification of the latch as drawn, per your Section 6 item 6.** I traced it from the extracted netlist: U1 is wired as a T-flip-flop (D1 ← Q1̄, pin 5 ← pin 2), CLOCK1 ← reed node, Q1 (pin 1) → R2 1 kΩ → Q1 gate, R1 1 MΩ gate pulldown to the raw battery return. SET1, SET2, RESET2, CLOCK2, D2 are all correctly tied to VSS; the unused half's outputs are correctly left open. C2 (100 nF from VBAT) with R4 (100 kΩ to VSS) is a correct **active-high power-on-reset** giving ~10 ms — so the device powers up OFF when a cell is first fitted. **Toggle logic is correct and the OFF state is genuinely clean:** with Q1 off, every resistive path (R1, R3, R4) sits at 0 V across it, C2 and C4 are ceramic, and the only OFF-state current is the MOSFET's leakage plus the CD4013's quiescent (< 1 µA at 25 °C). I have no objection to the concept — only to the debounce, the contact protection, and the placement (HW-015).
+- **Resolution (v16):** the reed no longer drives the clock pin directly. The schematic has **R12 100 Ω** in series with the reed, **R14 470 kΩ** pulling the node down and **C12 100 nF** across it, giving roughly **47 ms** of recovery — long enough to swallow contact bounce without a Schmitt buffer. Verified in `SCHEMATIC-CHECK.md` stage 7. The 470 kΩ also drops the magnet-held current from about 360 µA to about 7.7 µA.
+
+---
+
+### HW-016 — Blue LED has no forward-voltage headroom on a 3.0–3.6 V rail  ✅ RESOLVED (v16)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: DS1, R5, U2.D8
+- Problem: The BOM specifies a **blue** 3 mm LED (confirmed in the component photos), while the schematic symbol is a red LED. A blue LED has a forward voltage of roughly 2.7–3.2 V. The rail is 3.6 V falling to ~3.0 V over the cell's life, and the ATmega output stage drops another ~0.2 V. Through the schematic's 330 Ω that gives ~2 mA when fresh and essentially nothing at end of life — the status indicator goes dark exactly when you most need to know the battery is low.
+- Impact: The Node's only local feedback stops working. Compounds HW-014 (ambiguous on/off feedback).
+- Recommended fix: Use a **red or yellow LED (Vf ≈ 1.8–2.1 V)**, which leaves 1.0–1.8 V across the resistor across the whole cell life. Size R5 for 2 mA (it only ever flashes briefly), so ~680 Ω–1 kΩ. Make the schematic, the BOM and the fitted part agree.
+- Notes (v4): **This is no longer cosmetic.** The LED is now the confirmation mechanism for the magnet on/off control (HW-043, HW-044), so a blue LED going dark at ~3.0 V means the user-facing control loses its feedback exactly as the battery ages — the point at which someone is most likely to be on the roof investigating. Treat the change to a red or yellow part as required, not optional.
+- Notes: There is also a **BOM/schematic value mismatch** here — the BOM lists a 220 Ω resistor, the schematic says 330 Ω. Whichever survives, one document is wrong today.
+- **Resolution (v16):** the LED is gone from the schematic. Indication is now **LS1**, a CPT-1255C-090 piezo transducer on D7, which has no forward-voltage threshold to run out of. The headroom problem is deleted rather than mitigated.
+- Note: the substitution brought its own problems, tracked as **HW-055**, and it does not by itself answer **HW-044**, which stays open.
+
+---
+
+### HW-018 — Echo is on D7 instead of D8, so hardware input capture is unavailable  ✅ RESOLVED (v16)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: J5 pin 3 (Echo) → U2.D7; U2.D8 → R5/DS1
+- Problem: The ATmega328P's **Input Capture pin (ICP1) is PB0 = Arduino D8**, which this design uses for the status LED. Echo went to D7, an ordinary GPIO, so the echo pulse can only be measured in software (`pulseIn` or a pin-change interrupt).
+- Impact: `pulseIn` at 8 MHz resolves to roughly ±4 µs, and a pin-change ISR adds 1–2 µs of latency jitter. That is only ±0.7 mm of distance error so it is not fatal — but ICP1 gives a hardware timestamp at 125 ns resolution with zero interrupt-latency jitter, it is completely free, and it lets the MCU sleep during the flight time instead of spinning in a blocking loop (which also saves awake energy). Given NFR-2 explicitly drives this design, leaving a free hardware timer on the table is not defensible.
+- Recommended fix: **Swap them — Echo to D8, LED to D7.** One net change in the respin, no cost, no extra parts.
+- Notes: This also means the ultrasonic measurement no longer blocks the CPU, which shortens the awake window and helps NFR-1.
+- **Resolution (v16):** echo is on **D8**. `J3.3` → R1 100 Ω → `U1.JP7_2 (D8)`, so ICP1 is available for a hardware timestamp. D7 now carries the buzzer. Verified in `SCHEMATIC-CHECK.md` stage 10.
+
+---
+
+### HW-020 — Flow input D5 has no external pull-up, no filter and no series protection  ✅ RESOLVED (v16)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: J4 pin 1 → U2.D5
+- Problem: D5 goes straight from the MCU to a connector and out on a cable to the fill pipe, with nothing on it. The design relies entirely on the ATmega's internal pull-up.
+- Impact: Three separate problems. (a) If firmware leaves the internal pull-up enabled during sleep while the switch is closed, that is **~110 µA continuous** — on its own about half of the entire allowable average current for the 2-year target. (b) An unfiltered mechanical contact on a long cable will produce chatter and pick up noise. (c) No series protection (see HW-012).
+- Recommended fix: Add an **external 1 MΩ pull-up** to the switched rail plus a **100 nF** cap to ground at the connector (giving a 100 ms RC filter, which is fine for a flow signal that changes on a timescale of seconds), and a **100 Ω** series resistor at the MCU pin. 1 MΩ costs 3.6 µA when the switch is closed, and the internal pull-up can then stay off permanently. Combine with the wetting-pulse scheme from HW-019 for the actual sampling.
+- Notes: Firmware must still be explicit: internal pull-up **disabled** before sleeping, every time.
+- **Resolution (v16):** the flow input now has all three. **R6 1 MΩ** pulls the node up to BATT+, **C1 100 nF** filters it to the switched ground, **R5 100 Ω** protects the D5 drive pin and **R3 330 Ω** feeds the A2 sense pin. Net N06 carries exactly those five nodes. Verified in `SCHEMATIC-CHECK.md` stage 12. The 330 Ω is also what pushes the wetting current through the contact for HW-019.
+
+---
+
+### HW-021 — The MCU cannot read the reed line and cannot command its own shutdown  ✅ RESOLVED (v16)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: U1 (CD4013), S1 node, U2
+- Problem: The latch is entirely autonomous. The MCU has no connection to the reed node and no connection to the CD4013's RESET, so it cannot tell whether a magnet is present, cannot detect a magnet *gesture* (e.g. hold for 10 s), and cannot turn itself off.
+- Impact: Blocks several things you will want later:
+  - No magnet-based user input beyond raw on/off — which is what a local unpair needs (HW-022).
+  - No firmware-commanded shutdown on critical battery, which for a Li-SOCl₂ cell matters (deep-discharging past the plateau is where cells get unhappy).
+  - No way for firmware to log or report an unexpected power-cycle.
+- Recommended fix: Two wires, both to currently-free pins:
+  - **Reed sense:** reed node (after the Schmitt buffer from HW-014) → A0. Free.
+  - **Firmware shutdown:** A1 → a small-signal diode (cathode at A1) or a resistor → CD4013 RESET1, so driving A1 high resets the latch and kills the load. Must not fight the POR network — put a 100 kΩ in series and check the RC interaction with C2/R4.
+- Notes (v3): **DECIDED — the hardware latch stays.** You argued that a firmware-independent off is required on a sealed device, and that is the stronger position: a hung or crashed MCU can still be switched off with a magnet, which the MCU-sleep alternative cannot offer. The ~5 µA saving is not worth that. This issue therefore shrinks to just adding the two wires (reed sense + firmware shutdown), and those are now folded into **HW-043**. The alternative below is recorded for history only — do not implement it.
+- Notes: Alternative architecture, **rejected in v3**, recorded for history: delete the CD4013, Q1, R1, R2 and C2 entirely. Make the MCU always powered, put it in power-down (~4.5 µA) as the "OFF" state, and switch the ultrasonic and LoRa rails with small load switches. The reed then just drives a wake interrupt. This removes a whole subsystem, gives firmware full control over the on/off state, and costs ~5 µA in storage (≈88 mAh over a year on shelf — under 2 % of the pack). The one thing you lose is a true zero-power OFF for long-term storage. **Your call — tell me which way you want to go and I will rework the affected issues.**
+- **Resolution (v16):** both paths exist in the schematic. **A0** reads the reed node through **R13 100 Ω**, so the MCU can see the magnet. **A1** drives the flip-flop's `1~RD` through **R9 100 kΩ**, so the MCU can command its own shutdown. Against R11's 1 MΩ pull-up the 100 kΩ divider puts the reset node at roughly 0.3 V when A1 drives low — a valid HC low. Verified in `SCHEMATIC-CHECK.md` stages 6 and 7.
+- The hardware latch is unchanged and the magnet still has final authority, which is what the v3 decision required.
+
+---
+
+### HW-034 — C3 voltage rating mismatch between BOM and supplied part  ✅ RESOLVED (v16)
+- Severity: MINOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: C3
+- Problem: The BOM and schematic both specify 2200 µF **16 V**; the component photo shows a 2200 µF **25 V** part. Electrically the 25 V part is fine, but the can diameter differs (typically 13 mm vs 10 mm), so it may not match the PCB footprint or the enclosure clearance.
+- Impact: Fit problem at assembly; documentation does not describe the built article.
+- Recommended fix: Moot if HW-009 is adopted and C3 is deleted or replaced with ceramics. If C3 survives in any form, make the BOM, schematic, footprint and purchased part agree, and specify the diameter and lead pitch explicitly.
+- Notes: Flagged mainly because it is a symptom — the BOM and the built board have drifted apart in at least three places (this, HW-016's LED colour, and HW-016's resistor value). Worth a full reconciliation pass.
+- **Resolution (v16):** closed with HW-009. The part whose rating did not match the BOM no longer exists in the design. Its replacements carry their ratings as schematic parameters — C7 is 100 µF / 10 V, C8 is 10 µF / 50 V — so the BOM is generated from the sheet rather than maintained beside it.
+
+---
+
+### HW-037 — CD4013BE in a plastic DIP  ✅ RESOLVED (v16)
+- Severity: MINOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: U1
+- Problem: The CD4013BE is a 14-pin plastic DIP. If it is socketed (as the through-hole build style suggests), the socket contacts oxidise over years in a humid, thermally-cycling outdoor enclosure, and vibration can back the part out.
+- Impact: An intermittent contact in the power-latch IC means the device randomly turns off, or fails to turn on, in the field.
+- Recommended fix: Use the **SOIC-14 version soldered directly** (CD4013BM or equivalent). If U1 survives the architecture decision under HW-021 at all, do not socket it. Confirm the quiescent current and the operating temperature range against your chosen vendor's datasheet — the family covers −55 °C to +125 °C and 3–18 V, which is comfortable here, but I want the specific part's Iq over temperature in the power model rather than an assumption.
+- Notes: I also want to check one specification I could not retrieve during this review: most CD4013B datasheets state a **maximum clock input rise/fall time** (I believe around 15 µs at V_DD = 5 V, but treat that as unverified until you or I read the vendor datasheet). As drawn today the *active* rising edge at CLOCK1 is fast, so the spec is probably not violated — but the moment you add the series resistor from HW-014 it will be, which is exactly why HW-014 also calls for a Schmitt-trigger buffer. **Please confirm the number from your part's datasheet.**
+- Notes (v2): Partly superseded by **HW-041**. The package question here (SOIC, not socketed DIP) stands regardless of which logic family wins.
+- **Resolution (v16):** closed with HW-041. The CD4013BE is not in the schematic; U2 is a **74HC74N** in the same 14-pin DIP.
+
+---
+
+### HW-041 — Logic family for the power-latch flip-flop: CD4013BE vs 74HC74 vs SN74HCS74  ✅ RESOLVED (v16)
+- Severity: MAJOR *(raised from MINOR in v3)*
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: U1
+- Problem (v3, primary): **The CD4013B's 3 V minimum supply has no margin against the LoRa TX droop.** U1 is powered from the raw battery, upstream of the MOSFET, so it sees the full sag when the Ra-02 draws up to 120 mA — and it has no decoupling capacitor at all (the gap noted in HW-013). Fresh cells at ~0.1 Ω parallel impedance sag ~12 mV, which is nothing; an aged, passivated or cold pack at ~5 Ω sags ~600 mV, which on top of a 3.2 V end-of-life cell puts U1 at ~2.6 V — below its minimum. See **HW-042** for why the consequence is severe. Credit for this one goes to you, not to the v1 review.
+- Problem (v1, secondary): The CD4013BE is being run at 3.0–3.6 V. That is inside its recommended 3–18 V supply range, but **outside every characterisation table in the datasheet** — CD4013B DC and AC parameters are specified at V_DD = 5 V, 10 V and 15 V only. So no timing, drive or threshold parameter is guaranteed at the voltage this product actually runs at. This is the same class of defect as HW-017 (the IRLZ44N driven at an uncharacterised V_GS): it will work on the bench, and nothing in the datasheet says it must.
+- Impact: No guaranteed operating point for the part that decides whether the device is on or off. Low probability of failure, but it is not a defensible production position, and it is cheap to fix.
+- Recommended fix, in order of preference:
+  0. **74HC74 — CONFIRMED, part already on the bench (Toshiba TC74HC74AP, DIP-14).** Specified 2–6 V, so it doubles the droop margin against the CD4013BE and closes the characterisation gap. Under **HW-043** the latch no longer uses the CLOCK input at all, which removes the one area where the 74HC74 was the weaker part. **Fit this.** It is not sufficient on its own — HW-042 is still required.
+  1. **SN74HCS74 (still the better production part, if a non-DIP package is acceptable).** A 74HC74 with **Schmitt-trigger action on every input** and, per TI, **no input signal transition-rate requirement**. Specified 2–5.5 V, so 3.0–3.6 V is squarely inside the characterised range. This single substitution fixes the uncharacterised-operating-point problem *and* removes the separate Schmitt buffer that HW-014 would otherwise require. Only drawback: TSSOP/SOIC only, no DIP — which is fine, because HW-026 and HW-037 want SMD anyway, but it means it cannot go on the breadboard today.
+  2. **Keep the CD4013BE — rejected in v3.** Best quiescent-current specification of the three on paper and the most tolerant of slow edges, but the 3 V minimum against a measured-unknown droop is not a risk worth carrying when a 2 V part is already on the bench.
+  Also required whichever part wins: a **100 nF decoupling capacitor directly across pins 14 and 7** (this is still missing — HW-013).
+- Notes: **Do not fit a 74HCT74.** It is one letter different, physically identical, and will not work here: HCT has TTL input thresholds and needs V_CC = 4.5–5.5 V. Check the marking on the bench part before wiring anything.
+- Notes (v4): With HW-043 withdrawn back to a clock-driven toggle, the 74HC74's weaker slow-edge tolerance **is relevant again** — but it is fully handled by the Schmitt buffer that HW-043 now mandates, which presents a fast edge to CLOCK regardless of the family. The part decision is unchanged: fit the 74HC74 for its 2 V minimum.
+- Notes (v3): The v2 note that this "closes no blocker and is a production-quality item" was wrong — it understated the droop risk. Corrected above. The v1/v2 concern that the 74HC74 is less edge-tolerant than the CD4013BE was correct in itself but is now irrelevant, because HW-043 stops using the clock input. It is also moot if the architecture decision under HW-021 goes the "delete the flip-flop entirely" way — **settle HW-021 first**, because it may delete U1 rather than replace it.
+- Notes: Pin-for-pin migration detail (CD4013BE → 74HC74/HCS74) is in `HYDRO-NODE-REFERENCE.md` section 7. The two parts are both 14-pin dual D flip-flops but the pinouts are **not** compatible, and the set/reset polarity is **inverted** (CD4013 SET/RESET are active HIGH; 74HC74 PRE/CLR are active LOW). It is not a socket swap.
+- **Resolution (v16):** **U2 is a 74HC74N**, confirmed from the schematic's LibReference. The 2 V minimum supply is the reason, against the CD4013BE's 3 V — the margin that matters during a transmit burst on aged cells. The SN74HCS74 remains the preferred part if a respin ever needs it, but the 74HC74 is on the bench and closes the issue.
+
+---
+
+### HW-042 — Latch supply has no hold-up; a TX droop can switch the device off permanently in the field  ✅ RESOLVED (v16)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: U1 pin 14, VBAT
+- Problem: U1 is powered directly from the raw battery with **no local decoupling and no hold-up**. During a LoRa TX burst the Ra-02 draws up to 120 mA, and the cell's internal impedance — which rises with age, with passivation and with falling temperature — drops the rail. If that dip takes U1 below its minimum supply, the flip-flop can lose state.
+- Impact: **This is the highest-consequence failure mode on the list after the six blockers**, because it is self-latching and self-concealing. The sequence: the latch glitches → Q goes low → the MOSFET opens → the load disappears → the rail instantly recovers → **and the device stays off.** Nothing turns it back on. A Node dies silently on a roof and needs a physical site visit with a magnet. Worse, it is age- and temperature-correlated, so it will hit a whole fleet at roughly the same point in life and preferentially in cold weather. From the Hub's point of view it is indistinguishable from a Node that has gone out of range.
+- Recommended fix: Give the latch its own protected rail. Two parts:
+  - A **Schottky diode** (BAT54, 1N5819 or similar low-Vf part) from VBAT to U1 pin 14.
+  - A **10 µF X7R ceramic** from U1 pin 14 to GND_RAW, physically at the IC.
+  U1 draws well under a microamp, so over a 60 ms TX burst the hold-up cap sags by roughly 6 mV (ΔV = I·t/C). The diode blocks the droop propagating back into the latch. Forward drop at these currents is ~0.15 V, so even at a 3.0 V end-of-life cell the latch sees ~2.85 V — comfortably above the 74HC74's 2 V minimum (**HW-041**), and above the CD4013BE's 3 V minimum only marginally, which is a second reason to make the part change.
+  This also finally provides the decoupling capacitor at U1 that **HW-013** identified as missing.
+- Notes: **This issue is currently unquantified and must be measured before Stage 7 can sign off.** Scope VBAT at U1 pin 14 during a real +18 dBm transmission, on **cells that have been left idle for at least a week** so passivation is present, at room temperature and at the coldest temperature the product will see. Record the minimum. If the measured floor is below the fitted logic's minimum supply, **this escalates to BLOCKER**.
+- Notes: The same droop also affects the ATmega328P (which needs ≥2.4 V at 8 MHz, and will reset if the BOD fuse is set to 2.7 V) and the Ra-02 (1.8 V minimum, so it is fine). The difference is that an MCU reset is recoverable — it reboots and carries on — whereas a lost latch state is not.
+- **Resolution (v16):** the latch now has its own held-up supply. **D1 (1N5819)** feeds it from BATT+, **C9 10 µF** and **C10 100 nF** hold it through a transmit burst, and the 74HC74's VCC and its three asynchronous inputs sit on that rail rather than on BATT+. Verified in `SCHEMATIC-CHECK.md` stage 4.
+- **Still to measure (HW-042 test, carried to Stage 17):** the voltage on that rail during a transmit after the cells have sat idle a week. Above 2.0 V passes. The circuit is right; the number is not yet taken.
+
+---
+
+### HW-043 — Reed input needs real debounce; magnet retains full on/off control  ✅ RESOLVED (v16)
+- Severity: MAJOR
+- Status: ✅ RESOLVED (v16) — closed by the 2026-08-22 schematic
+- Component / net: S1, R3, C1, U1 CLOCK input, one new MCU net
+- Problem: The reed input is filtered only by R3 × C1 = 10 kΩ × 100 nF = **1 ms**, which is the same order as reed contact bounce. In a **toggle** latch every surviving bounce edge inverts the state, so the outcome of a deliberate magnet gesture is not deterministic — roughly a coin flip on each actuation. The failure is not "someone waves a magnet by accident"; it is "the installer brings the magnet to switch the Node on, two bounce edges get through, and it stays off."
+- Impact: Ambiguous on/off on a sealed rooftop device. Also, the present 10 kΩ pull-down means a magnet left resting on the enclosure draws **360 µA continuously** — on its own more than the entire 251 µA average budget for NFR-1.
+- Recommended fix — **keep magnet control of both on and off** (see the v4 note below for why the earlier proposal was withdrawn). Two parts:
+  - Insert an **inverting Schmitt-trigger buffer (74LVC1G14 or similar)** between the reed node and U1's CLOCK input. Select the specific part on quiescent current — 74LVC1G14 is typically well under a microamp but its datasheet maximum is around 10 µA over temperature, which is 4 % of the budget; an ultra-low-power alternative such as the 74AUP1G14 should be compared before committing. **Verify I_CC at 3.6 V from the vendor datasheet.**
+  - **Invert the reed connection**: reed from the node to GND_RAW through **1 kΩ**, with a **1 MΩ** pull-up to the latch rail and **1 µF** on the node. Delete R3.
+- Recommended fix — resulting behaviour: attack ≈ 1 ms, release ≈ 1 s. Bounce and magnet-sweep chatter are fully swallowed; two contacts would have to be **more than ~3 s apart** to register as two events, which is a deliberate visible double-tap rather than bounce. The buffer must be **inverting** because the node now goes low on magnet approach, and an inversion is what restores a rising edge at CLOCK — i.e. the device still toggles when the magnet arrives, not when it leaves.
+- Recommended fix — standby current: the 1 MΩ pull-up drops the magnet-resting-on-enclosure current from **360 µA to 3.6 µA**, a 100× improvement, and removes that risk from the NFR-1 budget entirely.
+- Recommended fix — one additional wire, **not** for power control: tap the **buffer output** to a spare MCU input (A0, through 100 Ω). Zero extra parts and no loading of the 1 MΩ node, since the buffer output is a clean logic level that is high for as long as the magnet is present. This gives firmware the magnet gesture it needs for local unpair (**HW-022**) and for the shutdown warning in **HW-044**. Optionally also wire an MCU line to U1's reset for **automatic low-battery shutdown only** (**HW-025**) — never as the user-facing off path.
+- Notes (v4): **The v3 proposal — asynchronous PRE/CLR with firmware-only OFF — is WITHDRAWN, and you were right to challenge it.** It contained a contradiction: HW-021 rejects the MCU-sleep architecture precisely because a hung MCU must still be switchable off with a magnet, and then v3 proposed making OFF firmware-dependent, which reintroduces exactly that failure. Magnet control of both directions is the correct requirement and it stands.
+- Notes (v4): Your LED indicator also changes the analysis in favour of the toggle. A blink-on-startup turns an ambiguous toggle into a **self-correcting** one — the installer sees no blink, taps again. That converts a silent failure into a visible retry and defuses most of the original concern. It is why this issue is now "add proper debounce" rather than "change the topology". The dependency it creates is covered in HW-016 and HW-044.
+- Notes: A hardware-timed alternative was evaluated and **not recommended**: tap = ON via PRE, hold ~3 s = OFF via an RC timer into CLR, keeping both directions firmware-independent while making bounce structurally impossible. It works, but it needs a Schmitt inverter, a low-leakage timing capacitor, two resistors and a steering diode — about five extra parts and a tuning exercise — for a control that is used roughly five times in the product's life. The complexity does not earn its place. Recorded in `HYDRO-NODE-REFERENCE.md` §9 in case the field data later says otherwise.
+- **Resolution (v16):** closed with HW-014, by the same three parts. The magnet keeps full on/off control — the reed still clocks the flip-flop directly and nothing about OFF depends on firmware, which is what the v4 rewrite required.
+
+---
+
 ## CHANGELOG
 
 | Version | Date | Change |
 |---|---|---|
+| v16 | 2026-08-22 | **Schematic received and checked line by line against `BUILD-SHEET.md`; full result in `SCHEMATIC-CHECK.md`.** 29 of 34 connections correct. Five faults found: **HW-053 (BLOCKER)** — `D3 → J2.3` is missing, so both DS18B20 probes have no supply and their VDD floats, which also loses the speed-of-sound correction on the ultrasonic reading; **HW-054** — the ultrasonic connector is wired GND·+5V·TX·RX against the module's GND·RX·TX·+5V, so a straight cable puts 3.6 V on the module's RX and leaves it unpowered; **HW-055** — the buzzer that replaced the LED sits directly on D7 with no series resistor, and its 8.4–15.6 nF draws an edge current above the pin's 40 mA absolute maximum; **HW-056** — four Pro Mini power and ground pads left open, losing ground stitching against HW-004; **HW-057** — a stray second reed pin pair parked off-sheet at (1060, −180). **HW-007 confirmed still open** — the symbol has four GND pins and three are unconnected, not three with two as originally written. **Twelve issues closed by the new schematic:** HW-009 and HW-034 (2200 µF gone, replaced by 100 µF/10 µF sized to the TX burst), HW-013 (nine local 100 nF — placement condition carried to the PCB stage), HW-014 and HW-043 (100 Ω + 470 kΩ + 100 nF giving ~47 ms recovery), HW-016 (LED removed), HW-018 (echo moved to D8, ICP1 available), HW-020 (flow input pulled up, filtered and protected), HW-021 (A0 reads the reed, A1 drives ~RD through 100 kΩ), HW-037 and HW-041 (74HC74N fitted), HW-042 (D1 + 10 µF + 100 nF holding the latch rail — measurement still owed). Also fixed a real bug in `tools/extract_netlist.py`: it treated both ends of a pin as electrical, which falsely shorted C1 and R7 across their own pins. The connecting end is `Location + PinLength × direction`; the tool now uses it and self-checks that no two-pin part is shorted across itself. Blockers 2 → 3. |
 | v15 | 2026-08-19 | HW-004 expanded with the full mechanism and implementation detail — reference §11. Quantified the actual defect: a 100 mm ground trace is ~100 nH, i.e. **272 Ω at 433 MHz**, against 2.7–5.4 Ω with a plane and a via; DC resistance is a red herring at 5.8 mV. Recorded the design-specific split — GND_SW takes the main pour, GND_RAW takes a small local pour with Q1 placed next to the battery connector — plus the routing flip (signals to Top, currently 227 tracks on Bottom with zero vias) and the slotted-plane trap. No severity or count change. |
 | v14 | 2026-08-19 | Link distance received — 50 m through thick concrete. **HW-003 DECIDED: two LS14500 in parallel, isolated with one `1N5819` per cell, 0.5 A fuse in the pack lead, supplied as a sealed non-serviceable pack; 2-year target kept.** The v13 single-cell recommendation is withdrawn: at 50 m through concrete the required spreading factor is uncertain, one cell only survives SF7 (SF9 gives 1.02×), and two cells cover every plausible outcome — and two cells is the *reversible* choice, since an easy measured link means simply fitting one, whereas the reverse needs a respin. HW-047 updated with the three modelled link scenarios; the worst (4 walls × 25 dB = 159 dB) fails at +20 dBm and SF12, which would be a siting problem not a radio one, so Stage 5 must measure it in a real building. Also recorded: put antenna gain at the mains-powered Hub where it costs no Node battery and helps both directions, and stay at 433 MHz — the earlier 868 MHz suggestion is withdrawn now that concrete penetration matters more than EU compliance. |
 | v13 | 2026-08-19 | HW-003 recommended fix reordered. **A single LS14500 at +14 dBm on a 1.5-year target gives a 2.01× margin and a ~45 mA peak that is inside the cell's 50 mA continuous rating** — so relaxing the target enables a one-cell design, which deletes the paralleling hazard outright rather than mitigating it. Now the recommendation. Recorded that relaxing the target does **not** work as a safety mitigation on its own, since the cells still deplete on their own schedule. Risk reframed more fairly: matched cells discharged together diverge modestly; the realistic hazard is a user replacing one cell of two, which a sealed non-serviceable pack prevents for free. Added concrete searchable part numbers (1N5819, SS14, PMEG2010AEH, LM66100, MAX40200, LTC4412) and corrected the earlier "PTC or fuse" advice — a PTC's 0.9–1.2 Ω costs the same headroom as a diode, so use a plain 0.5 A fuse. |
