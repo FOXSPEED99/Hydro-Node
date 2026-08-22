@@ -50,12 +50,11 @@ Nothing in the netlist is wrong any more. What is left are **library and part-ch
 
 A straight 1:1 cable puts 3.6 V on the module's RX pin and leaves the module unpowered. Nobody can work the crossover out from looking at the board, so the harness drawing has to exist before anyone builds a cable.
 
-### On how HW-053 was fixed
+### On how HW-053 was fixed — and the revision you are about to make
 
-You tied `J2.3` to BATT+ rather than switching it from D3. That works, and the ground switch still removes the probes completely when the device is off. Two things for the record:
+The checked schematic ties `J2.3` to BATT+. That works: the probes have a proper supply, and the ground switch still removes them completely when the device is off.
 
-- The probes now draw standby current the whole time the device is **on**, not only during a reading — about **1.5 µA** for the pair at the DS18B20's typical 750 nA, roughly **26 mAh over two years**. Under 1 % of a 4.4 Ah pack. Not worth another wire.
-- **D3 is now a spare pin.**
+**You are now moving it to D3, which is the better answer** — see *Moving the temperature supply to D3* below for the exact change. Two wires move, not one.
 
 ---
 
@@ -298,38 +297,116 @@ The pack's **2 × 1N5819 and the 0.5 A fuse are not on this sheet** — they liv
 
 ---
 
-## THE THREE PINS YOU ASKED ABOUT
+## THE PINS YOU ASKED ABOUT
 
-### A0 — lets the MCU see the magnet
+First, the thing that makes this confusing.
 
-`A0` → **R13 100 Ω** → 74HC74 pin 3, which is the flip-flop's clock input and the node the reed drives.
+**The on/off circuit works entirely on its own.** The reed switch, the 74HC74 and the MOSFET turn the device on and off with no help from the Pro Mini. You could pull the Pro Mini out of its sockets and the magnet would still work.
 
-The reed's job is to flip the latch. A0 is just watching that same wire, so firmware also knows a magnet is present — how long you held it, how many times you passed it. That is what a "hold the magnet 5 seconds to unpair" gesture would be built from (**HW-022**). The 100 Ω only protects the pin.
+So why are there wires from the Pro Mini into that circuit at all? Because the Pro Mini wants two things from it: to **watch** it, and to be able to **interrupt** it. That is all A0 and A1 are.
 
-### A1 — lets the MCU turn itself off, and read whether it is on
+---
 
-`A1` → **R9 100 kΩ** → 74HC74 pin 1, the flip-flop's `1~RD` — its **reset, active low**.
+### A0 — "is someone holding the magnet right now?"
 
-Drive A1 low and the latch resets, Q drops, the MOSFET opens, the switched ground disconnects, and the whole board dies. That is the commanded shutdown from **HW-021** — for a critically low battery, or a "shut down" command from the Hub. Leave A1 as an input and it reads the same node, so firmware can also ask "am I on?".
+**A0 → 100 Ω → 74HC74 pin 3.**
 
-**Why 100 kΩ and not a plain wire:** pin 1 is already held high by **R11, 1 MΩ**, from the latch rail. Wiring A1 straight to it would mean the pin has to sit high-impedance the whole time or it fights R11. With 100 kΩ against 1 MΩ, driving A1 low pulls the node to about **0.3 V** — a solid logic low for an HC part — and releasing A1 lets the 1 MΩ take it back high. One resistor turns one pin into both a reader and a driver.
+Pin 3 is the point the reed switch pushes on. A0 sits on that same point and **only listens.** It changes nothing about how the device turns on and off.
 
-### A2 and D5 — two pins on the flow switch, because they do two different jobs
+What it is for: the Pro Mini can beep the instant you touch the magnet. And later it can tell a quick touch apart from holding the magnet for five seconds — which is how you add a "reset" or "unpair" command without putting a button through the wall of the box.
 
-The flow switch is just a dry contact. Its node (N06) carries four things:
+The 100 Ω is a safety resistor. If anything goes wrong on that wire, it limits the current so the pin survives.
 
-| Part | Job |
+---
+
+### A1 — "am I on?" and "switch me off"
+
+**A1 → 100 kΩ → 74HC74 pin 1.**
+
+Pin 1 is the chip's **erase** pin. Pull it low and the chip forgets "on" — the MOSFET opens, the blue ground disconnects, and the whole board dies. This is the only way the device can switch *itself* off. It is there for cases like: the battery is nearly empty, so shut down cleanly instead of dying in the middle of a transmission.
+
+One wire, two jobs:
+
+| A1 set to | What happens |
 |---|---|
-| **R6 1 MΩ** to BATT+ | holds the node HIGH while the switch is open |
-| **C1 100 nF** to ground | filters noise picked up on a long cable |
-| **R5 100 Ω** to **D5** | the **driver** |
-| **R3 330 Ω** to **A2** | the **reader** |
+| **listening** (input) | it reads pin 1, so firmware knows whether the device is on |
+| **pushing low** (output) | pin 1 goes low, the chip resets, the device switches off |
 
-**D5 wakes the contact up.** Contacts that only ever carry microamps grow an oxide film and stop conducting even when closed. Just before a reading, firmware drives D5 high for a moment. Through 100 Ω that pushes about **36 mA** through the closed contact, which burns the film off. That is the wetting current in **HW-019**.
+**Why the 100 kΩ.** Pin 1 already has **R11, 1 MΩ**, pulling it up — a weak, constant pull toward "don't erase". The 100 kΩ is a **ten times stronger** pull downward, but only when the Pro Mini decides to use it.
 
-**A2 does the reading.** D5 then goes back to being an input, and A2 reads the node through 330 Ω. Switch closed → the node is pulled to ground → reads LOW. Switch open → the 1 MΩ holds it HIGH.
+| | Result |
+|---|---|
+| Pro Mini not pushing | the 1 MΩ wins → pin 1 stays high → nothing happens |
+| Pro Mini pushing low | the 100 kΩ wins → pin 1 drops to about **0.3 V** → low enough to erase |
 
-**Why not one pin for both?** Because the two jobs want opposite resistor values. The driver needs a *small* resistor to deliver real current. The reader wants a *bigger* one, so a fault out on the cable cannot damage the pin. One pin would force one compromise value that is bad at both. Splitting them also means the wetting pulse only happens when you ask for it — a few tens of microseconds every few minutes, which is why HW-019 put its cost at about **0.5 % of the energy budget**.
+If A1 were wired straight to pin 1 with no resistor, the Pro Mini would have to be careful never to drive that pin high or it would fight the chip. The resistor makes it impossible to get wrong.
+
+---
+
+### A2 and D5 — the flow switch, two pins for one switch
+
+The flow switch is two wires that touch when water flows. Reading it should take one pin. It takes two, for one reason.
+
+**The problem.** A switch that only ever carries a tiny current grows a thin film on its metal contacts, like rust. Eventually the contacts touch but no current gets through, and the device reports "no water" forever.
+
+**The fix.** Push a real current through it now and then to burn the film off. But the resistor you need for that is the opposite of the one you want for reading.
+
+| Pin | Resistor | Job |
+|---|---|---|
+| **D5** | **100 Ω** | **Cleans.** Firmware drives D5 high for a moment. Through 100 Ω that pushes about **36 mA** through the closed contact, which burns the film off. |
+| **A2** | **330 Ω** | **Reads.** D5 goes back to listening, then A2 reads the wire. |
+
+A small resistor means lots of current — good for cleaning, bad if the cable outside ever gets damaged.
+A bigger resistor protects the pin — good for reading, useless for cleaning.
+
+One pin would mean one resistor, and one resistor cannot do both jobs. So: two pins.
+
+Two more parts sit on that same wire:
+
+- **R6, 1 MΩ up to the battery plus** — holds the wire high while the switch is open, so there is always a definite reading instead of a floating wire that reads randomly.
+- **C1, 100 nF down to ground** — filters noise picked up by a long cable running past a radio transmitter.
+
+What the Pro Mini sees:
+
+| Switch | A2 reads |
+|---|---|
+| open — no water | **HIGH**, the 1 MΩ holds it up |
+| closed — water flowing | **LOW**, the switch pulls it to ground |
+
+---
+
+## MOVING THE TEMPERATURE SUPPLY TO D3
+
+**Yes, D3. But two wires have to move, not one.**
+
+| Wire | Now | Change to |
+|---|---|---|
+| `J2.3` — the probe VCC pin | BATT+ | **D3** |
+| `R7` — top end of the 4.7 kΩ | BATT+ | **`J2.3`** (which is now D3) |
+
+**If you move only `J2.3` and leave `R7` on BATT+, the change does nothing.** When D3 goes low to switch the probes off, the 4.7 kΩ still holds the data line at 3.6 V, and current flows into the probes through the internal protection diode on their data pin. They stay half-powered off the pull-up and the saving disappears — and a part powered through its protection diode is out of spec anyway.
+
+With both on D3: D3 low means the supply *and* the pull-up are at 0 V, so nothing gets in.
+
+This is exactly what `BUILD-SHEET.md` steps **11.3** and **14.10** said originally.
+
+**Can one pin supply it?** Yes.
+
+| | |
+|---|---|
+| Two DS18B20 converting | ~1.5 mA each |
+| Pull-up current when the bus is held low | 3.3 V / 4.7 kΩ ≈ 0.7 mA |
+| **Total** | **under 4 mA** |
+| ATmega328P pin rating | 20 mA |
+| Voltage the pin loses at 4 mA | roughly 0.1–0.2 V |
+
+**One thing to watch at end of life.** The DS18B20 needs at least **3.0 V**. The Pro Mini runs straight off the battery, so the probes get whatever the battery has, minus the pin's own drop. If the pack ever falls to 3.2 V the probes see about 3.0 V — right on the limit. The LS14500 holds 3.6 V nearly flat until it is almost empty, so you only reach that at the very end of the two years, and a temperature reading is the least important thing at that point.
+
+**What you gain:**
+- about **1.5 µA** of standby back — 26 mAh over two years, under 1 % of the pack
+- a probe cable that shorts VDD to ground is now limited by the MCU pin instead of being fed straight from the battery through the pack fuse. That is a real win for **HW-012**.
+
+**Firmware note:** after D3 goes high, wait a few milliseconds before talking to the probes.
 
 ---
 

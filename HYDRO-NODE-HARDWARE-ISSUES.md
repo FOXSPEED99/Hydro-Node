@@ -953,7 +953,22 @@ Schematic: `Hydro Node Schematic.SchDoc`, second pass 2026-08-22 — **all 34 bu
 - **Resolution (v17):** fixed, though not the way the build sheet specified. `J2.3` is now tied to **BATT+** rather than switched from D3, and `R7` pulls the data line up to the same rail. The probes have a proper supply, their GND stays on the switched ground, so the ground switch still removes them completely when the device is off.
 - **Cost of the change, so it is on the record:** the two probes now draw their standby current the whole time the device is *on*, instead of only during a reading. At the DS18B20's typical 750 nA standby that is about 1.5 µA for the pair, roughly 26 mAh over two years — **under 1 % of a 4.4 Ah pack**. Not worth another wire.
 - **What was given up:** there is no longer a way to power-cycle a hung 1-Wire bus, and a probe cable that shorts VDD to GND is now fed straight from the battery through the pack fuse instead of being current-limited by an MCU pin. The second point belongs with **HW-012**.
-- **D3 is now a spare pin.**
+- **Revision in progress (v17, same day):** you have decided to move the probe supply onto **D3** after all, which is the original build-sheet intent (steps 11.3 and 14.10) and the better answer. **Two wires move, not one:**
+
+  | Wire | Checked schematic | Change to |
+  |---|---|---|
+  | `J2.3` — probe VCC | BATT+ | **D3** |
+  | `R7` — top of the 4.7 kΩ pull-up | BATT+ | **`J2.3`** (so it follows D3) |
+
+  Moving only `J2.3` achieves nothing: with `R7` still on BATT+, a low on D3 leaves the pull-up holding the data line at 3.6 V and the probes are fed through the internal protection diode on their data pin — half-powered, and out of spec. With both on D3, a low kills the supply and the pull-up together.
+
+  **Current check:** two DS18B20 converting is about 1.5 mA each, plus roughly 0.7 mA of pull-up current while the bus is held low — **under 4 mA**, against the ATmega328P's 20 mA pin rating, for about 0.1–0.2 V of drop.
+
+  **End-of-life caveat:** the DS18B20 needs at least 3.0 V. The Pro Mini runs straight off the pack, so the probes get VBAT minus the pin drop. At a 3.2 V pack that is about 3.0 V — on the limit. LS14500 holds 3.6 V nearly flat until almost empty, so this is only reached at the very end of the two years.
+
+  **What it buys:** the ~1.5 µA of standby back, and a probe cable that shorts VDD to ground is limited by the MCU pin instead of being fed from the battery through the pack fuse — a genuine improvement for **HW-012**.
+
+  **Firmware:** allow a few milliseconds after D3 goes high before addressing the probes.
 
 ---
 
