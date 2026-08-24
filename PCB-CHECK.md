@@ -1,5 +1,11 @@
 # PCB CHECK — Hydro_Node_PCB.PcbDoc
 
+> **Superseded in part — read `PCB-FIXES.md` first.** Three findings below were corrected on
+> 2026-08-24: the Ra-02 footprint is **correct** (you fit the breakout board, not the bare module);
+> only **C6** needs moving, not C7/C8/C9; and the missing stitching vias matter less than stated,
+> because 20 through-hole ground pads already tie the layers. The one item that stands as written
+> is the top-layer routing slotting the pour.
+
 Checked 2026-08-24. Board file dated 8/24/2026 2:47 PM.
 Geometry read straight out of the file — every number below is measured, not estimated.
 

@@ -1,12 +1,12 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v18   |   Last updated: 2026-08-24   |   Status: Stage 0 review — PCB checked; 2 blockers; routing and clearances are clean, the Ra-02 footprint is not
+Version: v19   |   Last updated: 2026-08-24   |   Status: Stage 0 review — PCB corrections; **1 blocker**; the layout needs one real change (HW-063) plus tidy-ups
 
 ## STATUS SUMMARY
-Total issues: 66   |   Open: 42   |   Resolved: 22   |   Won't fix: 2
-Blockers remaining: 2
-Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, and the Ra-02 footprint is 25.40 mm across a 16 mm module.
+Total issues: 66   |   Open: 41   |   Resolved: 23   |   Won't fix: 2
+Blockers remaining: 1
+Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes. That is now the only blocker.
 Schematic: `Hydro Node Schematic.SchDoc` — all 34 build-sheet connections verified. See `SCHEMATIC-CHECK.md`.
-PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm, checked 2026-08-24 — **every net fully connected, minimum different-net clearance 0.351 mm, ground pour over the whole board**. See `PCB-CHECK.md`.
+PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm — every net connected, minimum different-net clearance 0.351 mm, ground pour over the whole board, all footprints correct. See `PCB-CHECK.md`; fixes and explanations in `PCB-FIXES.md`.
 
 ---
 
@@ -90,33 +90,9 @@ PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm, checked 2026-08-24 — **every net fu
 
 ---
 
-### HW-060 — The Ra-02 footprint will not take the module: 25.40 mm between pad rows against a 16 mm module
-- Severity: BLOCKER
-- Status: OPEN — **CONFIRMED as a fault** by the 2026-08-24 PCB check; escalated MAJOR → BLOCKER
-- Component / net: U3, footprint `RA-02_BREAKOUT_THT_2X8`
-- Problem: the Ai-Thinker Ra-02 is a **16-pad module on a 2.0 mm pitch**, two rows of eight. The commonest generic "2×8 through-hole" footprints are drawn on the 2.54 mm pitch used by ordinary headers. The footprint name does not say which this one is, and it cannot be read out of the `.SchDoc` — the geometry lives in the PcbLib.
-- Impact: if the footprint is 2.54 mm, the module does not fit, and the mistake is not visible until the boards and the stencil are already made. This is the single most expensive error available at this stage.
-- Fix: before routing anything, open the footprint in the PCB library editor and check the pad pitch and the row-to-row spacing against the module in your hand, with callipers. Do the same check for `MODULE_ARDUINO_PRO_MINI` (should be 2.54 mm, 12 × 2 plus the end rows) and for the three JST XH headers (**2.50 mm**, not 2.54 mm — XH is a metric 2.5 mm series and the difference accumulates to 0.2 mm across a 4-way part).
-- Notes: `BUILD-SHEET.md` stage 13 has the Ra-02 in sockets rather than soldered flat. If the production intent is sockets, the footprint must be the socket's pitch, and the socket must be one that accepts a 2.0 mm module. Settle this before the layout, not after.
-- **CONFIRMED (v18) — measured from `U3`'s pads in `Hydro_Node_PCB.PcbDoc`:**
 
-  | | Footprint on the board | Ai-Thinker Ra-02 |
-  |---|---|---|
-  | Pad rows | **25.40 mm apart** (1.000 inch) | module is **16 mm** wide |
-  | Pitch along the row | **2.54 mm** (0.100 inch) | **2.0 mm** |
-  | Row length, 8 pads | **17.78 mm** | module is **17 mm** long |
-
-  The module is 17 × 16 × 3.2 mm. Its pad rows cannot be more than 16 mm apart because that is the whole width of the part, so **they cannot span 25.4 mm**. The pitch is wrong too: at 2.0 mm against 2.54 mm the error reaches 3.8 mm by the eighth pad. Ordered as drawn, the boards are scrap.
-- **Question that decides the fix:** is the intention the **bare Ra-02** or an **Ra-02 breakout adapter** with 2.54 mm headers? The footprint is named `RA-02_BREAKOUT_THT_2X8`, so a breakout may well be what was meant.
-  - Bare module → rebuild the footprint at 2.0 mm pitch, measured with callipers first.
-  - Breakout board → measure the breakout. 25.4 mm between header rows is possible but unusual; most are narrower.
-- Everything else on the PCB waits on this, because fixing it moves U3 and every track routed to it — see **HW-061** and **HW-062**.
-- The other footprints were measured at the same time and are all correct: U2 DIP-14 at 7.62 mm rows, U1 Pro Mini at 15.24 mm rows and 2.54 mm pitch, Q1 TO-220 at 2.54 mm, J2 and J3 at **2.50 mm** (JST XH is metric, not 2.54), S1 at 35.00 mm between two pads.
-
----
-
-### HW-061 — Radio and latch decoupling sit 8–15 mm from the parts they serve
-- Severity: MAJOR
+### HW-061 — C6, the radio's 100 nF, sits 12.2 mm from U3
+- Severity: MINOR  *(was MAJOR in v18 — corrected, see below)*
 - Status: OPEN — found in the 2026-08-24 PCB check
 - Component / net: C6, C7, C8 against U3; C9 against U2
 - Problem: this is the placement condition that was attached to **HW-013** when it was closed at the schematic stage — a capacitor only works where it is put. Measured nearest pad to nearest pad on the board:
@@ -137,17 +113,43 @@ PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm, checked 2026-08-24 — **every net fu
 - Impact: C6, C7 and C8 exist because the SX1278 pulls up to 120 mA for a few milliseconds while the cells can supply about 50 mA. The capacitors have to hand that current over immediately. A 12 mm trace is roughly 12 nH in series, and series inductance is precisely what stops current changing fast — so at that distance the capacitor delivers its burst *through* the thing it was fitted to bypass. C9 is worse in kind: it is the part that holds the 74HC74's supply up through a transmit so the latch does not forget "on" and shut the device down on a roof. At 15 mm it is holding up the wrong end of a wire, which re-opens **HW-042** by the back door.
 - Fix: placement only, no schematic change. **C6 hard against U3's 3.3 V and GND pads, target under 3 mm**, with C8 then C7 just outside it in that order. **C9 against U2 pins 14 and 7.** Route each one's ground straight into the pour with its own via once **HW-062** is done.
 - Notes: C3 sits 11.8 mm from BATT, but C3 is the spare general-purpose 100 nF rather than a device bypass, so it is not counted as a failure here. Give it a job — put it at whichever device ends up furthest from its own cap after the moves above.
+- **CORRECTION (v19) — this issue was overstated in v18, and it was overstated in a way that would have wasted your time.** It listed C6, C7, C8 and C9 as all being too far away, on the general rule that decoupling belongs next to its chip. Working the actual numbers instead of the rule of thumb, **only C6 is degraded**:
+
+  | Cap | Distance | Verdict |
+  |---|---|---|
+  | **C6** 100 nF at U3 | 12.2 mm | **move it** |
+  | C7 100 µF at U3 | 12.1 mm | fine where it is |
+  | C8 10 µF at U3 | 8.3 mm | fine where it is |
+  | C9 10 µF at U2 | 15.0 mm | fine where it is |
+
+- **Why C6 genuinely matters.** A capacitor stops acting like a capacitor above its self-resonant frequency, where the inductance of the loop reaching it takes over. C6's loop is out and back, roughly 24 mm, which at ~1 nH/mm is about 20 nH:
+
+  | C6 position | Loop inductance | 100 nF useful up to |
+  |---|---|---|
+  | 12.2 mm (now) | ~20 nH | **3.6 MHz** |
+  | 3 mm | ~5 nH | **7.1 MHz** |
+  | pads touching | ~1.2 nH | 14.5 MHz |
+
+  Moving it doubles its useful range and costs nothing.
+- **Why C7 and C8 are fine.** They are bulk capacitors — they supply 120 mA for the few **milliseconds** a transmission lasts, and on that timescale inductance is irrelevant. What matters is resistance: 12 mm of 0.5 mm-wide 1 oz copper is about **12 mΩ**, which at 120 mA is **1.4 mV**. Out of 3600 mV.
+- **Why C9 is fine.** It holds the 74HC74's rail up during a burst, and the 74HC74 draws **microamps**. Over a 5 ms burst, 10 µF supplying 10 µA sags **5 mV**. Trace resistance at those currents is not measurable. **HW-042 is not re-opened by this** — the v18 entry claimed it was, and that claim is withdrawn.
+- Fix, revised: **move C6 only.** Target under 3 mm from U3's 3.3 V and nearest GND pad, with a via from C6's ground pad straight into the pour. Leave C7, C8 and C9 alone. Step-by-step in `PCB-FIXES.md`.
 
 ---
 
 ### HW-062 — One via on the entire board, and it is on BATT+
-- Severity: MAJOR
+- Severity: MINOR  *(was MAJOR in v18 — corrected, see below)*
 - Status: OPEN — found in the 2026-08-24 PCB check
 - Component / net: whole board; the single via is on BATT+
 - Problem: the board has **exactly one via**. There are **zero ground stitching vias**. The ground pour is on the Top layer; 1305 mm of routing across 305 segments is on the Bottom layer. The pour reaches bottom-layer ground only through the 20 through-hole GND pads that happen to exist.
 - Impact: 20 through-hole pads is a real connection, but it is not stitching. Return current from a bottom-layer signal has to travel sideways to the nearest ground pad before it can reach the pour above — and that sideways detour *is* the loop area **HW-004** was written about. The pour was supposed to remove the detour, not relocate it. **HW-007** asked specifically for stitching around the Ra-02 footprint, and there is none.
 - Fix: stitch the pour. A loose grid of vias across the board, plus a tight ring around U3, around U1, and where GND_SW and GND_RAW come together at Q1. A dozen well-placed vias cost nothing at fabrication and are the entire reason for having a pour.
 - Notes: do this **after** HW-060 is settled, because fixing the Ra-02 footprint moves U3 and everything routed to it.
+- **CORRECTION (v19) — downgraded, because the v18 entry undercounted what is already there.** This board is **entirely through-hole**. Every component lead sits in a plated hole, and a plated hole *is* a via. There are **20 ground pads spread across the board**, and every one of them already ties the top pour to the bottom-layer ground. The layers are not connected in one place; they are connected in twenty.
+- **What stitching still buys, and why it is worth an hour anyway:**
+  1. **It repairs the slots from HW-063.** Where a top-layer trace cuts the pour, vias on both sides keep the separated pieces joined through the bottom layer.
+  2. **The radio.** A ring of vias around U3 gives the transmit return current somewhere short to go, which is what **HW-007** asked for and is the one place on this board where it measurably matters.
+- Fix, unchanged in substance but now correctly prioritised — do it **after** HW-063, not before, since moving the top-layer traces changes where the slots are. `Tools → Via Stitching/Shielding → Add Stitching to Net`, net GND, 5 mm grid, then 6–8 by hand around U3. Step-by-step in `PCB-FIXES.md`.
 
 ---
 
@@ -169,6 +171,8 @@ PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm, checked 2026-08-24 — **every net fu
 - Impact: a pour is only a ground plane where it is continuous. Where a trace crosses it the return current underneath must detour around the slot, and around a 75 mm trace is a long way. This is the slotted-plane trap written up in `HYDRO-NODE-REFERENCE.md` §11 — the failure mode where a board has a pour, passes visual inspection, and still behaves as though it has no plane.
 - Fix: the Bottom layer already carries 1305 mm and clearly has room. Move as much of the 295 mm to Bottom as will go, **BATT+ first**. Whatever must stay on Top should be short and kept away from U3.
 - Notes: the 50 mm of **GND** on Top is a different case — that is pour-net copper and harmless. It also becomes unnecessary once **HW-062** stitches the pour properly.
+- **Priority note (v19): this is now the first PCB job, not the third.** With HW-060 withdrawn and HW-061 and HW-062 downgraded, this is the only remaining MAJOR on the layout and the only one that changes how the board behaves. The 75 mm BATT+ run on Top is the single biggest thing standing between this board and the ground plane HW-004 was closed on. Do it before the stitching vias, because moving these traces changes where the slots are.
+- Because the board is entirely through-hole, **moving a trace from Top to Bottom needs no extra vias** as long as both ends land on component pads — the pads already go through the board. That makes this a much smaller job than it looks. Step-by-step in `PCB-FIXES.md`.
 
 ---
 
@@ -1139,10 +1143,40 @@ PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm, checked 2026-08-24 — **every net fu
 
 ---
 
+### HW-060 — The Ra-02 footprint: 25.40 mm between pad rows  ✅ RESOLVED (v19) — not a fault
+- Severity: was BLOCKER — withdrawn
+- Status: ✅ RESOLVED (v19) — the footprint is correct; I had the wrong part
+- Component / net: U3, footprint `RA-02_BREAKOUT_THT_2X8`
+- Problem: the Ai-Thinker Ra-02 is a **16-pad module on a 2.0 mm pitch**, two rows of eight. The commonest generic "2×8 through-hole" footprints are drawn on the 2.54 mm pitch used by ordinary headers. The footprint name does not say which this one is, and it cannot be read out of the `.SchDoc` — the geometry lives in the PcbLib.
+- Impact: if the footprint is 2.54 mm, the module does not fit, and the mistake is not visible until the boards and the stencil are already made. This is the single most expensive error available at this stage.
+- Fix: before routing anything, open the footprint in the PCB library editor and check the pad pitch and the row-to-row spacing against the module in your hand, with callipers. Do the same check for `MODULE_ARDUINO_PRO_MINI` (should be 2.54 mm, 12 × 2 plus the end rows) and for the three JST XH headers (**2.50 mm**, not 2.54 mm — XH is a metric 2.5 mm series and the difference accumulates to 0.2 mm across a 4-way part).
+- Notes: `BUILD-SHEET.md` stage 13 has the Ra-02 in sockets rather than soldered flat. If the production intent is sockets, the footprint must be the socket's pitch, and the socket must be one that accepts a 2.0 mm module. Settle this before the layout, not after.
+- **CONFIRMED (v18) — measured from `U3`'s pads in `Hydro_Node_PCB.PcbDoc`:**
+
+  | | Footprint on the board | Ai-Thinker Ra-02 |
+  |---|---|---|
+  | Pad rows | **25.40 mm apart** (1.000 inch) | module is **16 mm** wide |
+  | Pitch along the row | **2.54 mm** (0.100 inch) | **2.0 mm** |
+  | Row length, 8 pads | **17.78 mm** | module is **17 mm** long |
+
+  The module is 17 × 16 × 3.2 mm. Its pad rows cannot be more than 16 mm apart because that is the whole width of the part, so **they cannot span 25.4 mm**. The pitch is wrong too: at 2.0 mm against 2.54 mm the error reaches 3.8 mm by the eighth pad. Ordered as drawn, the boards are scrap.
+- **Question that decides the fix:** is the intention the **bare Ra-02** or an **Ra-02 breakout adapter** with 2.54 mm headers? The footprint is named `RA-02_BREAKOUT_THT_2X8`, so a breakout may well be what was meant.
+  - Bare module → rebuild the footprint at 2.0 mm pitch, measured with callipers first.
+  - Breakout board → measure the breakout. 25.4 mm between header rows is possible but unusual; most are narrower.
+- Everything else on the PCB waits on this, because fixing it moves U3 and every track routed to it — see **HW-061** and **HW-062**.
+- The other footprints were measured at the same time and are all correct: U2 DIP-14 at 7.62 mm rows, U1 Pro Mini at 15.24 mm rows and 2.54 mm pitch, Q1 TO-220 at 2.54 mm, J2 and J3 at **2.50 mm** (JST XH is metric, not 2.54), S1 at 35.00 mm between two pads.
+- **RESOLUTION (v19) — I was wrong, and the footprint is right.** You are fitting the **Ra-02 breakout board**, not the bare 17 × 16 mm module. Confirmed from your own photo, `Components Images/images - 2026-08-01T183803.546.jpeg`: the Ra-02 shield can is soldered onto a larger carrier PCB with 8 through-holes along each edge and its own C1/C2. Measuring the photo — 8 holes per row, rows about **9.7 pitches apart** — gives 2.54 mm pitch and roughly 25 mm between rows, which is what the footprint has.
+- **Where the error came from, so it does not repeat:** the footprint is named `RA-02_BREAKOUT_THT_2X8`, and "BREAKOUT" was the answer sitting in the name. I measured the footprint against the module's datasheet dimensions without first establishing which of the two parts was being fitted. The lesson is the same one as **HW-019** and **HW-059** — check which physical part is in play *before* measuring anything against a datasheet.
+- Still worth one minute at the bench: put callipers across your breakout's two hole rows and confirm 25.4 mm. Everything else was measured off the file and is exact; this one number came off a photograph.
+
+---
+
+
 ## CHANGELOG
 
 | Version | Date | Change |
 |---|---|---|
+| v19 | 2026-08-24 | **Three corrections to v18, all of which reduce the work.** **HW-060 → RESOLVED, not a fault — I had the wrong part.** The board takes the **Ra-02 breakout**, not the bare 17 × 16 mm module; confirmed from the project photo, where the shield can sits on a carrier PCB with 8 through-holes per edge. Measuring that photo gives 2.54 mm pitch and ~25 mm rows, matching the footprint. The answer was in the footprint's own name — `RA-02_BREAKOUT_THT_2X8` — and I measured against a datasheet before establishing which part was being fitted, the same mistake as HW-019 and HW-059. **Blockers 2 → 1; HW-003 is now the only one.** **HW-061 MAJOR → MINOR and narrowed to C6 alone.** v18 flagged C6, C7, C8 and C9; running the numbers, only C6 is degraded — its 24 mm loop is ~20 nH, dropping the 100 nF's self-resonance to 3.6 MHz against 7.1 MHz at 3 mm. C7 and C8 are bulk caps supplying 120 mA over milliseconds, where 12 mm of trace is 12 mΩ and 1.4 mV; C9 feeds a part drawing microamps and sags 5 mV over a 5 ms burst. The v18 claim that C9's placement re-opens HW-042 is **withdrawn**. **HW-062 MAJOR → MINOR** — the v18 entry undercounted what exists: the board is entirely through-hole, so its **20 ground pads are already 20 layer-to-layer ties**. Stitching is still worth doing for the slots and for a ring around U3, but after HW-063 rather than before. **HW-063 is now the first PCB job** and the only remaining MAJOR on the layout — 295 mm of top-layer routing slotting the pour, 75 mm of it BATT+. Noted that moving those traces needs no new vias on an all-through-hole board. Added `PCB-FIXES.md`: the loop-and-return-current explanation, the arithmetic behind each call, and step-by-step Altium instructions. |
 | v18 | 2026-08-24 | **PCB received and checked. Routing is clean; one footprint is not.** Geometry read straight from `Hydro_Node_PCB.PcbDoc`: **every net is fully connected**, minimum different-net clearance is **0.351 mm**, track widths are 0.3 and 0.5 mm, annular ring is ≥ 0.25 mm everywhere but one boss pad, there are no component collisions and no duplicate designators. **HW-004 CLOSED** — there is now a solid GND pour on Top covering the whole 90 × 70 mm board, with all 20 GND pads inside it, and the pour is on the opposite layer from the routing, which is the right way round. **HW-015 CLOSED** — S1 moved from the middle of the board to the bottom edge. **HW-060 escalated MAJOR → BLOCKER and confirmed**: U3's pad rows are **25.40 mm** apart at **2.54 mm** pitch, against a module that is **17 × 16 mm** at **2.0 mm** pitch — the part cannot physically span it, so the boards would be scrap. Every other footprint measured correct, including J2/J3 at 2.50 mm (JST XH is metric). **Six new issues, all from the layout rather than the netlist: HW-061** — the radio's C6/C7/C8 sit 8.3–12.2 mm from U3 and the latch's C9 sits 15.0 mm from U2, which is HW-013's carried placement condition failing and re-opens HW-042 by the back door; **HW-062** — exactly **one via** on the whole board and it is on BATT+, so nothing stitches the top pour to the bottom-layer routing; **HW-063** — **295 mm** of top-layer routing cuts slots through the pour, 75 mm of it BATT+, the slotted-plane trap from reference §11; **HW-064** — Remove Dead Copper is off; **HW-065** — J1's boss pad has a zero annular ring and two stored DRC violations put silkscreen across S1's pads; **HW-066** — the M3 mounting holes leave 1.0 mm of board between hole and edge. Also confirmed the D3 → J2.3 change is on the board (NetJ2_3 = U1 + R7 + J2). Blockers unchanged at 2: HW-003 and now HW-060 in place of HW-004. |
 | v17 | 2026-08-22 | **Second schematic pass — connectivity is now signed off.** All 34 build-sheet connections verified correct; the remaining problems are library and part-family, not wiring. **Closed: HW-055** (R15 100 Ω fitted between D7 and the buzzer), **HW-007** (all four Ra-02 GND pins now tied), **HW-056** (all Pro Mini power and ground pads tied), **HW-053** (probe supply fixed by tying J2.3 to BATT+ rather than switching it from D3 — costs about 1.5 µA of standby, roughly 26 mAh over two years, under 1 % of the pack; D3 is now spare), and **HW-036** (every resistor is a Yageo MFR-25 metal film 0.25 W 1 %). **HW-054 → WON'T FIX** — the ultrasonic pin order is intentional; that permanently makes the harness a cross-over cable, and the requirement moves to HW-001. The LED-to-buzzer substitution is confirmed deliberate. **Three new issues, all found by checking the library rather than the netlist: HW-058** — C7, C8 and C9 are aluminium electrolytics rated 105 °C / 4000 h, which at HW-027's 70–85 °C internal temperature is 1.8–3.6 years, inside the two-year target; C9 also leaks on the always-live latch rail that the magnet cannot switch off. **HW-059** — S1's part number `MDSM-4R-12-18` is a Littelfuse *surface-mount* reed while its footprint is through-hole; the BOM would order the wrong part. **HW-060** — the Ra-02 footprint pitch must be measured against the module before layout, since the Ra-02 is a 2.0 mm pitch part and generic 2×8 through-hole footprints are 2.54 mm. Also confirmed every one of the 38 components has a current PCB footprint assigned, no duplicate designators, no orphan junction dots, and no missing connections. Blockers 3 → 2. |
 | v16 | 2026-08-22 | **Schematic received and checked line by line against `BUILD-SHEET.md`; full result in `SCHEMATIC-CHECK.md`.** 29 of 34 connections correct. Five faults found: **HW-053 (BLOCKER)** — `D3 → J2.3` is missing, so both DS18B20 probes have no supply and their VDD floats, which also loses the speed-of-sound correction on the ultrasonic reading; **HW-054** — the ultrasonic connector is wired GND·+5V·TX·RX against the module's GND·RX·TX·+5V, so a straight cable puts 3.6 V on the module's RX and leaves it unpowered; **HW-055** — the buzzer that replaced the LED sits directly on D7 with no series resistor, and its 8.4–15.6 nF draws an edge current above the pin's 40 mA absolute maximum; **HW-056** — four Pro Mini power and ground pads left open, losing ground stitching against HW-004; **HW-057** — a stray second reed pin pair parked off-sheet at (1060, −180). **HW-007 confirmed still open** — the symbol has four GND pins and three are unconnected, not three with two as originally written. **Twelve issues closed by the new schematic:** HW-009 and HW-034 (2200 µF gone, replaced by 100 µF/10 µF sized to the TX burst), HW-013 (nine local 100 nF — placement condition carried to the PCB stage), HW-014 and HW-043 (100 Ω + 470 kΩ + 100 nF giving ~47 ms recovery), HW-016 (LED removed), HW-018 (echo moved to D8, ICP1 available), HW-020 (flow input pulled up, filtered and protected), HW-021 (A0 reads the reed, A1 drives ~RD through 100 kΩ), HW-037 and HW-041 (74HC74N fitted), HW-042 (D1 + 10 µF + 100 nF holding the latch rail — measurement still owed). Also fixed a real bug in `tools/extract_netlist.py`: it treated both ends of a pin as electrical, which falsely shorted C1 and R7 across their own pins. The connecting end is `Location + PinLength × direction`; the tool now uses it and self-checks that no two-pin part is shorted across itself. Blockers 2 → 3. |
