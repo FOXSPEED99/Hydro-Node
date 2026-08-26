@@ -207,3 +207,76 @@ My advice: put the sheet at the antenna instead. Same piece of copper, far more 
 **Clean the flux.** The solder side is covered in it. This matters *today*: at 2.2 MΩ, flux residue between pads conducts enough to hold U2 pin 3 up, and the R14 change will look like it failed when it did not. Scrub with IPA and let it dry properly before you judge the result.
 
 **The u.FL connector on the Ra-02 is empty.** **Do not key the transmitter without an antenna connected.** The PA has nowhere to send its energy and it comes back into the chip. Fit the pigtail and antenna before any radio test.
+
+
+---
+
+# REVISION — YOUR LIST IS SHORTER THAN I MADE IT
+
+Added 2026-08-24 after three questions from the bench. Two items I listed as "worth doing" are **not worth doing today**, and I should have separated "needed" from "nice" more clearly the first time.
+
+## What the A0 pin does now — the honest answer
+
+The pin is **A0**. R13 was the 100 Ω between A0 and the 74HC74's pin 3, and A0 went nowhere else on the whole board.
+
+**With R13 gone, A0 is simply an unconnected pin.** Nothing is broken and nothing stops working.
+
+| | |
+|---|---|
+| What was lost | the MCU can no longer see when a magnet is applied |
+| What uses that today | **nothing** — no firmware feature depends on it |
+| What it was for | a future "hold the magnet 5 seconds to unpair" gesture (**HW-022**) |
+| When it comes back | Rev B, on the Schmitt trigger's output, where the leak cannot reach it |
+
+**⚠️ One thing you must do in firmware, and it matters for the measurement you are about to take.** A0 is now a **floating input**. A floating CMOS input drifts around the switching threshold and the input stage oscillates, which burns current continuously — exactly what **HW-035** is about, and it will show up in your sleep-current reading.
+
+So in `setup()`, treat A0 like any other unused pin: **`pinMode(A0, INPUT_PULLUP)`**, or set it as an output driven low. Either is fine; do not leave it as a bare floating input.
+
+## R14 → 2.2 MΩ is optional. Here is what it is actually for
+
+**It has nothing to do with the fault you fixed.** Removing R13 fixed *"the device never turns on"*. That is done, and it stays done.
+
+R14 is for the **other** problem you reported — the slow magnet approach that gives on-off-on. R14 sets how long the board ignores everything after a toggle:
+
+| R14 | Ignore window |
+|---|---|
+| 470 kΩ, as built | 57 ms |
+| 2.2 MΩ | 265 ms |
+
+Hand chatter runs over a few hundred milliseconds, so **265 ms will reduce it and may not eliminate it.** It is an improvement, not a cure — the cure is the Schmitt trigger in Rev B.
+
+**Do it only if you have the resistor in your hand.** If you do not, skip it. The board works, and the chatter is a known issue with a designed fix already written down. Not worth a trip.
+
+## C9 — skip it today. Measure first
+
+I put this on the list to protect the sleep-current reading, and on reflection that was over-cautious.
+
+The 5 µA figure is the **datasheet maximum at the part's rated 50 V**, measured two minutes after applying it. Your C9 sits at **3.5 V on a 50 V part** — real leakage there is normally well under 1 µA, nowhere near the 5 µA worst case.
+
+And the other reason to change it — aluminium electrolytics drying out at rooftop temperature (**HW-058**) — is a *two-year* problem. Your prototype is not going to sit on a roof for two years.
+
+**So: measure the sleep current with C9 as it is.**
+
+| Sleep current | What it means |
+|---|---|
+| comfortably under 25 µA | C9 is fine. Leave it. Change it in Rev B as a BOM line, not a rework. |
+| near or over 25 µA | *then* swap C9 for ceramic and measure again — now the test tells you something |
+
+That way you only do the work if it turns out to be needed, and if it is, the before-and-after actually means something.
+
+## The revised list
+
+**Must do**
+- ☐ Finish removing R13 — both pads clear
+- ☐ `pinMode(A0, INPUT_PULLUP)` in firmware before measuring sleep current
+
+**Cheap and worth it**
+- ☐ Clean the flux around U2 pins 1 and 3
+- ☐ One 100 nF directly across U3's 3.3 V and nearest GND pin, short legs
+
+**Only if you have the part**
+- ☐ R14 → 2.2 MΩ, then check pin 3 sits under 0.3 V, then ten slow magnet approaches
+
+**Do not do today**
+- C9 — measure first, swap only if the sleep current says so
+- C6, C7, C8, R9, and everything layout-related
