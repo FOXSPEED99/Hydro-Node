@@ -5,25 +5,56 @@ Your test: **Pro Mini + LoRa module only. No sensors plugged in.** Result: **0.1
 
 ---
 
-## PART 1 — IS 0.10 mA BAD?
+## PART 1 — "0.10 mA STILL GIVES 2 YEARS. ISN'T THAT ENOUGH?"
 
-No. It is worse than planned, but the device still works for two years.
+**You are right, and my last answer did not explain the real reason properly.**
 
-Think of the battery as a bucket with **4400 units** in it.
+Yes — 0.10 mA lasts two years. Think of the battery as a bucket with
+**4400 units** in it:
 
-| | Units used in 2 years | Units left over |
+| | Units used in 2 years | Left over |
 |---|---|---|
 | The plan (0.025 mA) | 1800 | 2600 spare |
 | What you measured (0.10 mA) | 3100 | 1300 spare |
 
-Both fit in the bucket. So **nothing is broken and nothing is urgent.**
+Both fit. Nothing is broken and nothing is urgent. So far you are correct.
 
-But the spare is what protects you from the things you cannot control yet:
-the battery losing capacity in the summer heat, the radio needing to shout
-louder than expected to reach the Hub, the blocking diodes eating some voltage.
+### But that "2 years" assumes the radio link turns out easy
 
-**2600 spare is comfortable. 1300 spare is thin.** That is the whole problem.
-Not "it will die", just "there is no room left for surprises".
+Here is the part I should have led with. **The radio's energy cost is not one
+number.** It depends on how hard the Hub is to reach — 50 metres through thick
+concrete. If the signal is weak, the radio has to send each message more slowly
+so it survives the journey. That setting is called the spreading factor, SF.
+A slower setting means the transmitter stays on longer for the same message,
+and airtime is where almost all the active energy goes.
+
+**You have not measured the link yet.** That is HW-047, still open. So you do
+not know yet which of these columns you are in:
+
+| | Radio energy in 2 years | + sleep at 0.025 mA | + sleep at 0.10 mA |
+|---|---|---|---|
+| **SF7** (easy link) | 1400 units | 1800 total — **fits, 2.4× spare** | 3100 total — **fits, 1.4× spare** |
+| **SF9** (harder link) | 3000 units | 3500 total — **fits, 1.3× spare** | **4800 total — DOES NOT FIT** |
+
+Read the bottom-right cell. At SF9 the bucket holds 4400 and the design needs
+4800. **It runs out about two months early.**
+
+So the honest answer to your question is:
+
+> **0.10 mA is fine if the link is easy, and fails if the link is hard.
+> You will not know which until you measure the link.
+> 0.025 mA works either way.**
+
+That is the whole reason to chase it. Not "2 years isn't enough" — it is
+"2 years only holds if the other unknown goes your way, and you can remove that
+gamble for free, using five lines of code and no parts."
+
+The other things the spare has to cover are smaller but real: the cells lose
+capacity in summer heat, and the two blocking diodes in HW-003 eat some voltage
+so the node stops working slightly before the cells are truly empty.
+
+**Bottom line: not urgent, not a blocker, but it costs nothing to fix, so fix
+it before you measure the link rather than after.**
 
 ---
 
@@ -115,12 +146,71 @@ Either way you learn something real, and it costs nothing.
 
 ---
 
-## PART 5 — WHAT TO ACTUALLY DO
+## PART 5 — THE TEST SKETCH — FLASH IT AND FIND OUT
 
-### In the code, before it sleeps
+Stop guessing. There is a sketch ready to flash:
 
-Five lines. Add them one at a time and re-measure after each one, so you can
-see what each is worth.
+**`firmware/sleep_test/sleep_test.ino`**
+
+It does nothing except go to sleep. At the top there is one line:
+
+```c
+#define STAGE 0
+```
+
+Change that number, flash, measure, write the number down, repeat. **Seven
+flashes, about half an hour**, and at the end you know exactly where every
+microamp goes instead of us arguing about it.
+
+| Stage | What it switches off | Expect |
+|---|---|---|
+| 0 | nothing — radio still in standby | ~1.70 mA |
+| 1 | radio asleep | ~0.10 mA |
+| 2 | ADC + comparator off | ~0.10 mA |
+| **3** | **pin 13 LED properly off** | **~0.06 mA ← the LED test** |
+| 4 | all pins given a defined state | ~0.04 mA |
+| 5 | brown-out detector off | ~0.02 mA |
+| 6 | watchdog running — the real product | ~0.025 mA |
+
+**Stage 2 → stage 3 is the LED measurement.** In stages 1 and 2 the sketch
+deliberately leaves pin 13 as `INPUT_PULLUP` — the exact state we suspect your
+firmware leaves it in. Stage 3 fixes it. The difference between those two
+readings *is* what the LED costs, measured rather than argued about.
+
+### Three things that will ruin the readings if you forget them
+
+1. **Unplug the USB-TTL programmer before you measure.** It pushes current
+   backwards into the board through the RX and DTR wires. Flash, pull all six
+   wires off, then measure. This is the single most common way to get a
+   nonsense number.
+2. **Use the µA range**, or a 10 Ω resistor in the battery negative lead with
+   the meter reading millivolts across it. On the mA range you cannot see the
+   difference between stages 3, 4 and 5 at all.
+3. **The board must be switched on** — magnet toggled, MOSFET conducting.
+
+### How it tells you what it is doing
+
+There is no serial output, because a serial adapter would ruin the measurement.
+It uses the LED instead, then stops forever:
+
+- **First group, slow blinks** — which stage is running. Stage 0 blinks once,
+  stage 1 twice, and so on. This is how you confirm you flashed what you think
+  you flashed.
+- **Second group, fast blinks** — the radio check:
+  - **2 fast blinks** = the radio answered correctly and is now asleep. Good.
+  - **6 fast blinks** = the radio did not answer. Stop; the reading means
+    nothing until the SPI wiring is fixed.
+
+The sketch reads the Ra-02's ID register and checks it comes back as `0x12`,
+then commands sleep and reads the mode back to confirm it took. So it does not
+assume the radio went to sleep, it **proves** it.
+
+---
+
+## PART 5b — WHAT GOES IN THE REAL FIRMWARE
+
+Once the test tells you which stages matter, this is what belongs in the actual
+node code, before it sleeps.
 
 ```c
 // 1. Pin 13's LED, properly off
@@ -203,8 +293,13 @@ removing 0.02 mA at a time you need to see those steps.
 ## THE SHORT VERSION
 
 1. 0.10 mA still lasts two years. It just leaves no spare. Worth fixing, not urgent.
-2. Your LoRa sleep code works and your ADC is already off. Both confirmed by the number itself.
-3. The remaining 0.10 mA is four things inside the Arduino that the code never switched off.
-4. Biggest single item is probably the pin-13 LED, glowing too faintly to see. Check it in a dark room.
-5. Five lines of code should get you to 0.02–0.03 mA.
-6. Then re-measure on a µA range, and measure the ultrasonic module separately before plugging it in.
+2. You were right that 0.10 mA gives two years. It gives two years **only if the
+   radio link turns out easy.** At SF9 it runs out two months early, and you have
+   not measured the link yet. 0.025 mA works either way — that is the real reason.
+3. Your LoRa sleep code works and your ADC is already off. Both confirmed by the number itself.
+4. The remaining 0.10 mA is four things inside the Arduino that the code never switched off.
+5. Biggest single item is probably the pin-13 LED, glowing too faintly to see. Check it in a dark room.
+6. **Flash `firmware/sleep_test/sleep_test.ino`** and step through the seven
+   stages. Unplug the programmer before each reading, and use the µA range.
+7. Five lines of code should get you to 0.02–0.03 mA.
+8. Then measure the ultrasonic module on its own before plugging it in.
