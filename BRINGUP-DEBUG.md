@@ -325,3 +325,96 @@ To test whether the MOSFET is really switching, do not use continuity. **Measure
 My money is on **D1**, then **Q1 rotated**, then **R9 / the Pro Mini**.
 
 Write down what each step reads and send me the six numbers — that pins it down exactly.
+
+---
+
+# ✅ IT WORKS — WHAT NOW
+
+## Why a 100 Ω caused all that
+
+It was never about 100 Ω being small. It was about the **ratio**.
+
+Two resistors pulling on the same wire is a tug-of-war, and **the smaller one wins**. R14 pulled the clock line down with 470,000 Ω. The Pro Mini's leak pushed it up through R13's 100 Ω. That is **4,700 against 1** — it was not a close fight.
+
+R13 was sized to protect a microcontroller pin from a fault on a cable. That is a completely different question from "what does this resistor do when the Pro Mini is half-powered and leaking?" Nobody asked the second question, including me. Every connection from the MCU into the always-on latch has to be weak enough to *lose* to that circuit's own pull-up or pull-down. That rule is now written into HW-067 so it cannot be forgotten in the next revision.
+
+---
+
+## The reed chatter — what is happening
+
+When you bring the magnet in **slowly**, there is a distance where the field is *only just* strong enough. Right at that point the blades are barely touching, and your hand shaking is enough to make them open and close several times.
+
+**Every closure is one toggle.** So you get on, off, on. Moving the magnet in quickly crosses that zone too fast to wobble, which is why being fast works.
+
+The board already throws away chatter faster than about **47 ms** — that is R14 and C12 doing their job, and it is why contact bounce never bothers you. But hand-hovering chatter is *slower* than that, maybe a tenth of a second between wobbles, so it walks straight through the filter.
+
+**The fix is to make the ignore-window much longer** — about half a second to a second — so that the whole magnet gesture counts as a single touch.
+
+### Try this tonight — one capacitor
+
+**Change C12 from 100 nF to 1 µF.** That makes the ignore-window about **470 ms** instead of 47 ms, ten times longer, and it is a single part.
+
+| Result | Meaning |
+|---|---|
+| chatter stops, toggling stays reliable | done — keep it, and Rev B just needs the same value |
+| toggling becomes unreliable or double-fires | put 100 nF back. The clock edge has become too slow for the flip-flop, and Rev B needs the Schmitt trigger below |
+
+I could not verify the 74HC74's maximum input rise rate — every datasheet host is blocked from here — so this genuinely is an experiment rather than a prediction. The bigger capacitor also slows the *rising* edge into the clock pin, from about 10 µs to about 100 µs, and whether the chip minds that is the thing the test tells us.
+
+### The proper fix for Rev B
+
+Add a **Schmitt-trigger inverter** — a 74LVC1G14 in SOT-23-5, one gate, under 1 µA, a few cents — between the RC and the flip-flop's clock:
+
+```
+reed ──R12──┬──────────────> Schmitt input
+            │
+     R14 ───┴─── C12 ─── BATT−
+
+     Schmitt output ──┬──> U2 pin 3  (clock)
+                      └──R13──> A0
+```
+
+This fixes three things at once:
+
+1. **The ignore-window can be as long as you like.** A Schmitt is built to accept slow inputs and produce a clean fast edge, so C12 can be 1 µF or 10 µF without the clock edge getting mushy.
+2. **HW-067 is fixed properly, and you keep the feature.** A0 now hangs off the Schmitt's *output*, which is a driven CMOS pin. The Pro Mini's leak cannot move a driven output — no contest. So the MCU can still see the magnet, and R13 can stay at 100 Ω.
+3. The toggle happens when you **take the magnet away**, which is a more definite action than an approach.
+
+**I was wrong to drop the Schmitt trigger.** HW-014 called for one in the first review; I withdrew it in favour of the RC filter. The RC handles contact bounce, which is what I sized it for, and cannot handle slow hand chatter — which is exactly what you are seeing.
+
+### And a free mechanical fix, worth doing either way
+
+Put a **shallow pocket or dimple in the enclosure** at the magnet spot, sized so the magnet drops into one defined position. Then the field at the reed goes from nearly nothing to well past the threshold as the magnet seats — it never hovers at the edge, because there is nowhere to hover. Combined with either fix above, that removes the problem for good.
+
+---
+
+## The plan from here
+
+### Now — the board works, so measure it
+
+Leave R13's leg lifted. Nothing uses A0 yet.
+
+1. **Sleep current** (HW-002) — device on, MCU asleep. Target **25 µA or less**. This is the number the whole two-year budget rests on and it has never been measured.
+2. **Current with a magnet sitting on the reed** — expect about 7.7 µA.
+3. **Voltage on U2 pin 14 during a transmit**, after the cells have sat idle a week (HW-042). Must stay above **2.0 V**.
+4. Check the rest works: buzzer, radio link to the Hub, both temperature probes, ultrasonic, flow switch.
+5. **Ultrasonic blind zone** — flat target, 2 cm outward in 5 mm steps (HW-051).
+6. **Transducer centre-to-centre spacing** with callipers (HW-052).
+
+### Then — Rev B changes, all now decided
+
+| | Change | Issue |
+|---|---|---|
+| Reed | Schmitt trigger + bigger C12, A0 moves to its output | HW-069 |
+| R9 | 100 kΩ → **1 MΩ** | HW-067 |
+| C6 | move hard against U3's 3.3 V and GND pads | HW-061 |
+| Top layer | move the 295 mm of routing to Bottom, BATT+ first | HW-063 |
+| Vias | stitch the pour, ring around U3 | HW-062 |
+| C7, C8, C9 | aluminium → tantalum or ceramic | HW-058 |
+| Polygon | Remove Dead Copper on | HW-064 |
+| J1 boss | plated pad → non-plated hole | HW-065 |
+| S1 | trim silkscreen off the pads; fix the part number | HW-065, HW-059 |
+| M3 holes | move in to ~3.5 mm from the edge | HW-066 |
+| Battery pack | 2 × 1N5819 + 0.5 A fuse, sealed | **HW-003 — the last blocker** |
+
+Nothing in that list is hard. Most of it is an afternoon in Altium.

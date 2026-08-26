@@ -1,13 +1,13 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v21   |   Last updated: 2026-08-24   |   Status: **Stage 1 bring-up — root cause found.** HW-067 confirmed on hardware: the half-powered Pro Mini holds the latch clock at 2.4 V
+Version: v22   |   Last updated: 2026-08-24   |   Status: **Stage 1 bring-up — the board switches on.** HW-067 fixed on the bench; reed chatter on slow magnet approach is the open bring-up item
 
 ## STATUS SUMMARY
-Total issues: 68   |   Open: 43   |   Resolved: 23   |   Won't fix: 2
-Blockers remaining: 2
-Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, and the latch clock is held high by the half-powered Pro Mini so the device cannot be switched on.
+Total issues: 69   |   Open: 44   |   Resolved: 23   |   Won't fix: 2
+Blockers remaining: 1
+Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes. That is the only blocker.
 Schematic: `Hydro Node Schematic.SchDoc` — all 34 build-sheet connections verified. See `SCHEMATIC-CHECK.md`.
 PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm — every net connected, clearance 0.351 mm, ground pour over the whole board, all footprints correct. See `PCB-CHECK.md` and `PCB-FIXES.md`.
-Bring-up: **root cause found 2026-08-24 — HW-067.** U2 pin 3 sits at 2.4 V instead of 0 V, so the reed never produces a clock edge. Fix is R13 → 1 MΩ, R14 → 100 kΩ, C12 → 470 nF, R9 → 1 MΩ. Measurements and workaround in `BRINGUP-DEBUG.md`.
+Bring-up: **the board switches on.** HW-067 confirmed and worked around by lifting one leg of R13. Remaining bring-up item is **HW-069**, reed chatter on a slow magnet approach. Six Stage-17 measurements are still owed, starting with sleep current. See `BRINGUP-DEBUG.md`.
 
 ---
 
@@ -149,6 +149,38 @@ Bring-up: **root cause found 2026-08-24 — HW-067.** U2 pin 3 sits at 2.4 V ins
 - Impact: in practice HC leakage is nanoamps at room temperature and this works fine — which is what makes it dangerous. It is a margin that shrinks as the board heats up on a roof, so the failure would appear months into deployment, in summer, in the field, and would look random.
 - Fix: **220 kΩ instead of 1 MΩ.** Worst-case drop becomes 0.22 V, leaving the pin above 3.1 V. The cost is the standing current when the pin is pulled low — but that only happens while A1 is deliberately commanding a shutdown, so it is microamps for milliseconds, not a continuous drain.
 - Notes: raised as MINOR because it has not been observed failing and there is no evidence it is behind the current bring-up problem. Worth folding into the same respin as **HW-067**, since both are about this one pin.
+
+---
+
+### HW-069 — Slow magnet approach makes the reed chatter, and the RC filter is too short to catch it
+- Severity: MAJOR
+- Status: OPEN — observed on the first working board, 2026-08-24
+- Component / net: S1, R12, R14, C12, `U2.3 (1CP)`
+- Problem, as reported from the bench: *"sometimes when i put the magnet close to the reed switch it's turn on and off and on — like you should be fast or something. it's not happen always but sometimes."*
+- Mechanism: bringing the magnet in **slowly** parks it at the distance where the field is only just above the reed's pull-in threshold. There the blades are barely closed, and ordinary hand tremor opens and closes them several times. **Every closure is a rising edge, and every rising edge is a toggle**, so the latch lands wherever the last wobble left it. Moving the magnet in quickly crosses that zone too fast to wobble, which is exactly the behaviour reported.
+- Why the existing filter does not catch it: R14 × C12 = 470 kΩ × 100 nF gives a **47 ms** recovery. That was sized in **HW-014** against *contact bounce*, which lasts a few hundred microseconds, and it does that job — bounce has never been a problem on this board. Hand chatter is two orders of magnitude slower, perhaps 100 ms between wobbles, so the node falls back below threshold between them and each closure produces a fresh edge.
+- **This means my v16 decision to drop the Schmitt trigger was wrong.** HW-014 originally required one; I withdrew it on the grounds that R14 + C12 gave sufficient debounce. That reasoning covered bounce and not chatter, and the two need very different time constants.
+- Fix, in two stages:
+
+  **1. Bench experiment, one part:** **C12 100 nF → 1 µF**, giving a **470 ms** window. If the chatter stops and toggling stays reliable, that may be enough. If toggling becomes unreliable, revert — the rising edge into the clock has gone from ~10 µs to ~100 µs and the flip-flop is objecting. *This is genuinely an experiment: the 74HC74's maximum input transition rate could not be checked, because every datasheet host is blocked from this environment.*
+
+  **2. Rev B, the proper fix:** a **74LVC1G14** Schmitt-trigger inverter (SOT-23-5, <1 µA, a few cents) between the RC node and `U2.3`:
+
+  ```
+  reed ──R12──┬──────────────> Schmitt input
+              │
+       R14 ───┴─── C12 ─── BATT−
+
+       Schmitt output ──┬──> U2 pin 3  (clock)
+                        └──R13──> A0
+  ```
+
+  This settles three things at once:
+  - **The window can be as long as wanted** — a Schmitt accepts arbitrarily slow inputs and emits a clean fast edge, so C12 is free to be 1 µF or 10 µF.
+  - **HW-067 is fixed structurally rather than by resistor ratio.** A0 hangs off the Schmitt's *driven output*, which the Pro Mini's ~15 µA leak cannot move. R13 can stay 100 Ω, and the "MCU can see the magnet" feature survives intact.
+  - The toggle lands on magnet **removal**, a more definite gesture than an approach.
+- **Mechanical fix, free, worth doing regardless:** a shallow pocket or dimple in the enclosure at the magnet spot, sized so the magnet drops into one defined position. The field at the reed then goes from nearly nothing to well past threshold as the magnet seats — it cannot hover at the edge because there is nowhere to hover. This also fixes the "where exactly do I put the magnet" problem for the installer, and ties into **HW-015**'s marking requirement.
+- Notes: contact wear is not a concern here even with a larger C12 charging through R12 — **HW-014** established that the device is switched roughly five times in two years, so inrush per closure is irrelevant.
 
 ---
 
@@ -1237,6 +1269,7 @@ Bring-up: **root cause found 2026-08-24 — HW-067.** U2 pin 3 sits at 2.4 V ins
 
 | Version | Date | Change |
 |---|---|---|
+| v22 | 2026-08-24 | **The board switches on.** Lifting one leg of R13 dropped U2 pin 3 from 2.4 V to 0 V and the magnet now toggles the latch — **HW-067 confirmed on hardware**, and it was a design fault, not a build fault. Blockers back to 1: HW-003 alone. **HW-069 raised (MAJOR)** from the first thing observed on the working board: a *slow* magnet approach makes the reed chatter, because it parks the magnet at the distance where the field only just exceeds pull-in and hand tremor opens and closes the blades several times — every closure being one toggle. R14 × C12's 47 ms window was sized in HW-014 against **contact bounce** (hundreds of microseconds) and does that job; hand chatter is two orders of magnitude slower and walks straight through. **This makes the v16 decision to drop the Schmitt trigger wrong** — HW-014 originally required one, and the reasoning that replaced it covered bounce but not chatter. Fix in two stages: a one-part bench experiment (C12 → 1 µF for a 470 ms window, reverting if the slower clock edge upsets the flip-flop — flagged as a genuine experiment since every datasheet host is blocked from this environment), then a **74LVC1G14 Schmitt inverter** in Rev B, which also fixes HW-067 structurally by moving A0 onto the Schmitt's driven output where the Pro Mini's leak cannot reach it. Free mechanical fix recorded alongside: a pocket in the enclosure so the magnet seats in one defined position and cannot hover at the threshold. Consolidated Rev B change list written into `BRINGUP-DEBUG.md`. |
 | v21 | 2026-08-24 | **Root cause of the bring-up failure found and confirmed on hardware. HW-067 raised MAJOR → BLOCKER.** Six measurements on the built board: the latch rail is 3.5 V, reset and set are both released, the reed works — but **U2 pin 3, the clock, sits at 2.4 V instead of 0 V**. The 74HC74 triggers on a rising edge, and at 2.4 V the input already reads high, so the magnet's move to 3.6 V produces **no edge**. Q never toggles, the gate never rises, the MOSFET never conducts; every reading follows from that one thing. **Source:** the Pro Mini's A0 reaches pin 3 through R13's **100 Ω** against R14's **470 kΩ** pull-down — 4,700× stronger — and when the device is off the Pro Mini has BATT+ on VCC with a floating ground, so it leaks out of A0. Working back from the measurement the internal path is ~235 kΩ to BATT+, giving 3.6 × 470/(470+235) = **2.40 V**, exactly what was read. **Fix: R13 → 1 MΩ, R14 → 100 kΩ, C12 → 470 nF** (keeps R14 × C12 at 47 ms so HW-014's debounce is unchanged), **and R9 → 1 MΩ** for the same reason on the reset line — the 3.2 V on pin 1 against a 3.5 V rail is that same leak, ~300 nA out through R9. Immediate workaround: lift one leg of R13. Firmware rule now mandatory: A0 and A1 are inputs with pull-ups disabled except while A1 deliberately commands a shutdown. **General lesson recorded:** low-side switching leaves the Pro Mini permanently half-powered when off, so every connection from an MCU pin into the always-on latch domain must be high-impedance enough to lose to that domain's own pull-up or pull-down — R13 was sized for pin protection without anyone asking what it does in the off state. Nothing is wrong with the soldering. |
 | v20 | 2026-08-24 | **First hand-built board does not switch on — Stage 1 bring-up opened.** Symptom: the magnet never toggles the MOSFET, and bridging Drain to Source by hand powers the Pro Mini for about 3 seconds. The second half of that is **not a fault** — a meter in continuity mode cannot supply the radio's first transmit burst, so the rail collapses; bridging with wire instead holds it up. That observation is diagnostically valuable: everything downstream of the MOSFET works, so the fault is confined to six parts — D1, the latch rail, the 74HC74, R10, the gate and Q1. Added `BRINGUP-DEBUG.md`: a six-measurement binary search with the real pad positions out of the PCB file, plus the orientation checklist for the five parts that can be fitted backwards (D1, C9, U2, Q1, the reed) and the note that all voltages must be referenced to BATT−, not the switched ground. **Two new issues found by analysing the failure rather than the board: HW-067** — R9's 100 kΩ from the Pro Mini's A1 to the flip-flop's active-low reset is **ten times stronger** than R11's 1 MΩ pull-up, so a low on A1 holds the latch in reset permanently and the device can never be switched on with every connection correct; the same applies far more severely to R13's 100 Ω against R14's 470 kΩ on the clock line. Fix is a firmware rule (A0 and A1 are inputs unless deliberately driving) plus raising R9 to 1 MΩ in any respin. **HW-068** — R11's 1 MΩ against the 74HC74's worst-case ±1 µA input leakage leaves only about 20 mV of margin at V<sub>IH</sub>; 220 kΩ removes it. Prime suspects for the current failure, in order: D1 fitted backwards, Q1 rotated so Gate and Source are swapped, and HW-067. |
 | v19 | 2026-08-24 | **Three corrections to v18, all of which reduce the work.** **HW-060 → RESOLVED, not a fault — I had the wrong part.** The board takes the **Ra-02 breakout**, not the bare 17 × 16 mm module; confirmed from the project photo, where the shield can sits on a carrier PCB with 8 through-holes per edge. Measuring that photo gives 2.54 mm pitch and ~25 mm rows, matching the footprint. The answer was in the footprint's own name — `RA-02_BREAKOUT_THT_2X8` — and I measured against a datasheet before establishing which part was being fitted, the same mistake as HW-019 and HW-059. **Blockers 2 → 1; HW-003 is now the only one.** **HW-061 MAJOR → MINOR and narrowed to C6 alone.** v18 flagged C6, C7, C8 and C9; running the numbers, only C6 is degraded — its 24 mm loop is ~20 nH, dropping the 100 nF's self-resonance to 3.6 MHz against 7.1 MHz at 3 mm. C7 and C8 are bulk caps supplying 120 mA over milliseconds, where 12 mm of trace is 12 mΩ and 1.4 mV; C9 feeds a part drawing microamps and sags 5 mV over a 5 ms burst. The v18 claim that C9's placement re-opens HW-042 is **withdrawn**. **HW-062 MAJOR → MINOR** — the v18 entry undercounted what exists: the board is entirely through-hole, so its **20 ground pads are already 20 layer-to-layer ties**. Stitching is still worth doing for the slots and for a ring around U3, but after HW-063 rather than before. **HW-063 is now the first PCB job** and the only remaining MAJOR on the layout — 295 mm of top-layer routing slotting the pour, 75 mm of it BATT+. Noted that moving those traces needs no new vias on an all-through-hole board. Added `PCB-FIXES.md`: the loop-and-return-current explanation, the arithmetic behind each call, and step-by-step Altium instructions. |
