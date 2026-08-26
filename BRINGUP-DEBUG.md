@@ -1,5 +1,111 @@
 # THE BOARD DOESN'T SWITCH ON — FINDING IT
 
+## ✅ FOUND IT — 2026-08-24, from your six readings
+
+| Measurement | You got | Should be | |
+|---|---|---|---|
+| U2 pin 14 | 3.5 V | 3.3–3.5 V | ✅ latch rail is fine — D1 and C9 are correct |
+| U2 pin 1 | 3.2 V | 3.3–3.5 V | ✅ reset released |
+| U2 pin 4 | 3.5 V | 3.3–3.5 V | ✅ set released |
+| **U2 pin 3, no magnet** | **2.4 V** | **0 V** | ❌ **this is the fault** |
+| U2 pin 3, magnet | 3.6 V | 3.5 V | ✅ the reed works |
+| U2 pin 5 | 0 V always | should flip | consequence, not a cause |
+| Q1 gate | 0 V always | follows pin 5 | consequence, not a cause |
+
+**Pin 3 is the clock. It must sit at 0 V and jump up when the magnet arrives.** The chip counts the *jump from low to high*, not the level. Yours is already sitting at 2.4 V, which the 74HC74 reads as **high**, so when the magnet takes it to 3.6 V there is no jump — it was already high. **No edge, no toggle, Q stays at 0, the gate stays at 0, the MOSFET never turns on.**
+
+Every one of your seven readings is explained by that one thing. The chip is fine, the MOSFET is fine, the reed is fine, D1 is fine, and your soldering is fine.
+
+### Why pin 3 is sitting at 2.4 V
+
+**This is a design fault, not a build fault — it is HW-067, and the board can never work as drawn.**
+
+Pin 3 is pulled down to BATT− by **R14, 470 kΩ**. The Pro Mini's **A0** reaches the same pin through **R13, 100 Ω**.
+
+When the device is off, the Pro Mini is in a strange state: its **VCC is on BATT+, which is always live**, while its **ground is the switched ground, which is floating**. It is half-powered. Current leaks out of its A0 pin, through R13's 100 Ω, onto the clock line — and R13 is **4,700 times stronger than R14**, so it wins completely.
+
+Working backwards from your 2.4 V, the leakage path inside the Pro Mini looks like about **235 kΩ** to BATT+:
+
+```
+BATT+ 3.6 V ── ~235 kΩ inside the Pro Mini ── A0 ── R13 100 Ω ──┬── U2 pin 3
+                                                                 │
+                                                          R14 470 kΩ
+                                                                 │
+                                                              BATT−
+
+3.6 V × 470 / (470 + 235) = 2.4 V     ← exactly what you measured
+```
+
+235 kΩ is an ordinary figure for a CMOS pin whose chip is powered but has no ground. The numbers line up.
+
+---
+
+## PROVE IT IN TWO MINUTES
+
+**Unsolder one leg of R13 and lift it clear of the board.** That is the 100 Ω between the Pro Mini's A0 and U2 pin 3.
+
+Then power up and measure U2 pin 3 again:
+
+| Pin 3 now reads | Meaning |
+|---|---|
+| **about 0 V** | Confirmed. Try the magnet — the device should switch on and stay on. |
+| **still 2.4 V** | R13 is innocent; **R14 has a bad joint or is open.** Power off and measure resistance from pin 3 to BATT− — it should read about 470 kΩ. |
+
+With R13 lifted the board will work. The only thing you lose is the MCU's ability to see the magnet, which nothing needs yet.
+
+---
+
+## WHAT "TOGGLE" MEANS — YOUR QUESTION
+
+I explained this badly. A toggle is a switch that **swaps and stays**, like the button on a desk lamp:
+
+| You do | Pin 5 |
+|---|---|
+| touch the magnet, take it away | goes to 3.5 V and **stays at 3.5 V** |
+| touch it again, take it away | goes to 0 V and **stays at 0 V** |
+| touch it again | back to 3.5 V |
+
+It does **not** follow the magnet. The magnet is not a button you hold — each touch flips the state and the state stays after you remove it. That is the whole reason the 74HC74 is on the board: the reed alone would only be "on while the magnet is there".
+
+So the right way to watch pin 5 is: leave the meter on it, touch the magnet, **take the magnet away**, and see whether the reading changed and stayed changed. Yours never changed at all, which fits — it was never getting a clock edge.
+
+---
+
+## THE PROPER FIX
+
+Lifting R13 works but throws away the feature. Three resistor changes fix it properly and keep everything:
+
+| Part | Now | Change to | Why |
+|---|---|---|---|
+| **R13** | 100 Ω | **1 MΩ** | so the Pro Mini can no longer overpower the pull-down |
+| **R14** | 470 kΩ | **100 kΩ** | so the pull-down wins with room to spare |
+| **C12** | 100 nF | **470 nF** | keeps the debounce at 47 ms with the smaller R14 |
+
+What that does:
+
+| | Pin 3 when off | Valid low needs | Debounce |
+|---|---|---|---|
+| as built | **2.40 V** | under 1.05 V | 47 ms |
+| R13 → 1 MΩ only | 0.99 V | under 1.05 V | 47 ms — only 60 mV of margin, too tight |
+| **all three** | **0.27 V** | under 1.05 V | **47 ms** ✅ |
+
+R14 × C12 stays at 47 ms, so the debounce from HW-014 is unchanged.
+
+The one cost: with the magnet held on the reed, current rises from about 7.7 µA to about 35 µA, because R14 is smaller. That only flows while a magnet is actually sitting on the switch, so it does nothing to the two-year budget.
+
+### Also check R9 and A1, for the same reason
+
+**R9, 100 kΩ**, connects the Pro Mini's **A1** to U2 **pin 1** — the reset. R11 holds pin 1 up with 1 MΩ, so R9 is **10 times stronger**. Here the leak happens to push pin 1 *up*, which is the harmless direction, and your 3.2 V reading shows exactly that — 0.3 V below the rail because a little current is flowing out through R9.
+
+It is harmless today and dangerous tomorrow: the moment firmware drives A1 low, or the leak changes with temperature, the same failure appears on the reset instead of the clock. **Change R9 to 1 MΩ** at the same time.
+
+### And a firmware rule, written down now
+
+**A0 and A1 must be inputs with their pull-ups disabled at all times**, except for the few milliseconds when A1 is deliberately commanding a shutdown, after which it goes straight back to being an input. Never leave either as an output.
+
+---
+
+
 For the hand-built PCB, 2026-08-24. Pad positions are the real ones out of `Hydro_Node_PCB.PcbDoc`.
 
 ---

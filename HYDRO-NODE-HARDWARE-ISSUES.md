@@ -1,13 +1,13 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v20   |   Last updated: 2026-08-24   |   Status: **Stage 1 bring-up** — first hand-built board does not switch on; diagnosis in `BRINGUP-DEBUG.md`
+Version: v21   |   Last updated: 2026-08-24   |   Status: **Stage 1 bring-up — root cause found.** HW-067 confirmed on hardware: the half-powered Pro Mini holds the latch clock at 2.4 V
 
 ## STATUS SUMMARY
 Total issues: 68   |   Open: 43   |   Resolved: 23   |   Won't fix: 2
-Blockers remaining: 1
-Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, and the first built board does not switch on.
+Blockers remaining: 2
+Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes, and the latch clock is held high by the half-powered Pro Mini so the device cannot be switched on.
 Schematic: `Hydro Node Schematic.SchDoc` — all 34 build-sheet connections verified. See `SCHEMATIC-CHECK.md`.
 PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm — every net connected, clearance 0.351 mm, ground pour over the whole board, all footprints correct. See `PCB-CHECK.md` and `PCB-FIXES.md`.
-Bring-up: first hand-built board, 2026-08-24 — the magnet does not switch the MOSFET. Bridging Drain to Source powers the Pro Mini, so the fault is inside D1 → latch rail → 74HC74 → gate → MOSFET. Procedure in `BRINGUP-DEBUG.md`.
+Bring-up: **root cause found 2026-08-24 — HW-067.** U2 pin 3 sits at 2.4 V instead of 0 V, so the reed never produces a clock edge. Fix is R13 → 1 MΩ, R14 → 100 kΩ, C12 → 470 nF, R9 → 1 MΩ. Measurements and workaround in `BRINGUP-DEBUG.md`.
 
 ---
 
@@ -92,9 +92,9 @@ Bring-up: first hand-built board, 2026-08-24 — the magnet does not switch the 
 ---
 
 
-### HW-067 — R9 gives the Pro Mini ten times more authority over the latch reset than R11
-- Severity: MAJOR
-- Status: OPEN — raised 2026-08-24 while debugging the first hand-built board
+### HW-067 — The half-powered Pro Mini holds the latch clock at 2.4 V, so the magnet can never switch the device on
+- Severity: **BLOCKER** *(raised from MAJOR — confirmed on hardware)*
+- Status: OPEN — **CONFIRMED by measurement on the first built board, 2026-08-24**
 - Component / net: R9 100 kΩ from `U1.A1` to `U2.1 (1~RD)`; R11 1 MΩ from the latch rail to the same pin
 - Problem: `U2.1` is the flip-flop's **active-low reset**. It is held high by **R11, 1 MΩ**. The Pro Mini's **A1** reaches the same pin through **R9, 100 kΩ**. R9 is **ten times stronger than R11**, so whenever A1 sits low the reset is held asserted, Q stays at 0, the gate stays at 0 V and the MOSFET can never turn on — no matter how many times the magnet is applied.
 - Why this is not just a firmware question: when the device is **off**, the Pro Mini still has BATT+ on its VCC while its ground floats, so it sits half-powered in an undefined state with its pins in an undefined condition. The design assumes A1 is high-impedance in that state. Nothing on the board enforces it.
@@ -105,6 +105,39 @@ Bring-up: first hand-built board, 2026-08-24 — the magnet does not switch the 
   3. A series diode from A1 into R9, so the MCU can only ever pull the pin **down** deliberately, is available if the firmware route proves unreliable.
 - Notes: also check **R13**, the 100 Ω from `U1.A0` to `U2.3`, the clock. That one is 100 Ω against R14's 470 kΩ pull-down — nearly 5000 times stronger — so a stuck-low A0 clamps the clock line and the reed can never produce an edge. The same firmware rule covers both: **A0 and A1 are inputs unless deliberately driving.**
 - Cross-reference: **HW-021** put both pins there on purpose and that decision stands. This issue is about the resistor ratio and the off-state, not about whether the MCU should be able to read and reset the latch.
+- **CONFIRMED (v21) — this is why the first board does not work, and it is a design fault, not a build fault.** Six measurements on the built board, all referenced to BATT−:
+
+  | Point | Measured | Expected | |
+  |---|---|---|---|
+  | U2 pin 14 (latch rail) | 3.5 V | 3.3–3.5 V | ✅ D1 and C9 correct |
+  | U2 pin 1 (`1~RD`) | 3.2 V | 3.3–3.5 V | ✅ reset released |
+  | U2 pin 4 (`1~SD`) | 3.5 V | 3.3–3.5 V | ✅ set released |
+  | **U2 pin 3 (`1CP`), no magnet** | **2.4 V** | **0 V** | ❌ **the fault** |
+  | U2 pin 3, magnet applied | 3.6 V | 3.5 V | ✅ the reed works |
+  | U2 pin 5 (`1Q`) | 0 V, never changes | toggles | consequence |
+  | Q1 gate | 0 V, never changes | follows pin 5 | consequence |
+
+- **Mechanism.** Pin 3 is the clock and the 74HC74 triggers on a **rising edge**. Held at 2.4 V the input already reads as high (V<sub>IH</sub> is 0.7 × 3.5 = 2.45 V, and the real switching threshold is near 1.75 V), so the magnet's move to 3.6 V produces **no edge at all**. Q never toggles, the gate never rises, the MOSFET never conducts. Every one of the seven readings follows from that.
+- **Source of the 2.4 V.** Pin 3 is pulled to BATT− by **R14, 470 kΩ**. The Pro Mini's **A0** reaches the same node through **R13, 100 Ω** — R13 is **4,700× stronger**. When the device is off the Pro Mini has BATT+ on its VCC and a floating ground, so it is half-powered and leaks current out of A0. Working back from the measurement, the internal path looks like about **235 kΩ** to BATT+: 3.6 × 470/(470+235) = **2.40 V**, exactly what was read. 235 kΩ is an ordinary figure for a CMOS pin on a chip that is powered without a ground.
+- **Immediate proof and workaround:** lift one leg of **R13**. Pin 3 should fall to ~0 V and the magnet should then work. If it stays at 2.4 V, R14 is open instead — measure pin 3 to BATT− at ~470 kΩ with power off.
+- **Proper fix — three resistor/capacitor changes:**
+
+  | Part | Now | Change to | Effect |
+  |---|---|---|---|
+  | R13 | 100 Ω | **1 MΩ** | the MCU can no longer overpower the pull-down |
+  | R14 | 470 kΩ | **100 kΩ** | the pull-down wins with margin |
+  | C12 | 100 nF | **470 nF** | keeps R14 × C12 at 47 ms, so HW-014's debounce is unchanged |
+
+  | | Pin 3 when off | Valid low needs | Debounce |
+  |---|---|---|---|
+  | as built | **2.40 V** | < 1.05 V | 47 ms |
+  | R13 → 1 MΩ alone | 0.99 V | < 1.05 V | 47 ms — 60 mV margin, too tight |
+  | **all three** | **0.27 V** | < 1.05 V | **47 ms** ✅ |
+
+  Cost: with a magnet left sitting on the reed, current rises from ~7.7 µA to ~35 µA. That only flows while a magnet is physically present, so it does not touch the two-year budget.
+- **Also change R9 to 1 MΩ.** The same leak reaches U2 pin 1 through R9's 100 kΩ against R11's 1 MΩ. Today it pushes pin 1 *up*, which is harmless — and the 3.2 V reading on pin 1 against a 3.5 V rail is that leak, ~300 nA flowing out through R9. It becomes the same failure on the reset line the moment firmware drives A1 low or the leakage shifts with temperature.
+- **Firmware rule, now mandatory:** **A0 and A1 are inputs with pull-ups disabled at all times**, except the few milliseconds A1 spends deliberately commanding a shutdown, after which it returns to an input immediately. Neither pin may ever be left as an output.
+- **The general lesson for this design, worth carrying into any respin:** low-side switching means the Pro Mini is *always* half-powered when the device is off. **Any connection from an MCU pin into the always-on latch domain must be high-impedance enough to lose to that domain's own pull-up or pull-down.** R13 at 100 Ω against 470 kΩ was never going to work; the resistor was sized for pin protection without anyone asking what it does in the off state.
 
 ---
 
@@ -1204,6 +1237,7 @@ Bring-up: first hand-built board, 2026-08-24 — the magnet does not switch the 
 
 | Version | Date | Change |
 |---|---|---|
+| v21 | 2026-08-24 | **Root cause of the bring-up failure found and confirmed on hardware. HW-067 raised MAJOR → BLOCKER.** Six measurements on the built board: the latch rail is 3.5 V, reset and set are both released, the reed works — but **U2 pin 3, the clock, sits at 2.4 V instead of 0 V**. The 74HC74 triggers on a rising edge, and at 2.4 V the input already reads high, so the magnet's move to 3.6 V produces **no edge**. Q never toggles, the gate never rises, the MOSFET never conducts; every reading follows from that one thing. **Source:** the Pro Mini's A0 reaches pin 3 through R13's **100 Ω** against R14's **470 kΩ** pull-down — 4,700× stronger — and when the device is off the Pro Mini has BATT+ on VCC with a floating ground, so it leaks out of A0. Working back from the measurement the internal path is ~235 kΩ to BATT+, giving 3.6 × 470/(470+235) = **2.40 V**, exactly what was read. **Fix: R13 → 1 MΩ, R14 → 100 kΩ, C12 → 470 nF** (keeps R14 × C12 at 47 ms so HW-014's debounce is unchanged), **and R9 → 1 MΩ** for the same reason on the reset line — the 3.2 V on pin 1 against a 3.5 V rail is that same leak, ~300 nA out through R9. Immediate workaround: lift one leg of R13. Firmware rule now mandatory: A0 and A1 are inputs with pull-ups disabled except while A1 deliberately commands a shutdown. **General lesson recorded:** low-side switching leaves the Pro Mini permanently half-powered when off, so every connection from an MCU pin into the always-on latch domain must be high-impedance enough to lose to that domain's own pull-up or pull-down — R13 was sized for pin protection without anyone asking what it does in the off state. Nothing is wrong with the soldering. |
 | v20 | 2026-08-24 | **First hand-built board does not switch on — Stage 1 bring-up opened.** Symptom: the magnet never toggles the MOSFET, and bridging Drain to Source by hand powers the Pro Mini for about 3 seconds. The second half of that is **not a fault** — a meter in continuity mode cannot supply the radio's first transmit burst, so the rail collapses; bridging with wire instead holds it up. That observation is diagnostically valuable: everything downstream of the MOSFET works, so the fault is confined to six parts — D1, the latch rail, the 74HC74, R10, the gate and Q1. Added `BRINGUP-DEBUG.md`: a six-measurement binary search with the real pad positions out of the PCB file, plus the orientation checklist for the five parts that can be fitted backwards (D1, C9, U2, Q1, the reed) and the note that all voltages must be referenced to BATT−, not the switched ground. **Two new issues found by analysing the failure rather than the board: HW-067** — R9's 100 kΩ from the Pro Mini's A1 to the flip-flop's active-low reset is **ten times stronger** than R11's 1 MΩ pull-up, so a low on A1 holds the latch in reset permanently and the device can never be switched on with every connection correct; the same applies far more severely to R13's 100 Ω against R14's 470 kΩ on the clock line. Fix is a firmware rule (A0 and A1 are inputs unless deliberately driving) plus raising R9 to 1 MΩ in any respin. **HW-068** — R11's 1 MΩ against the 74HC74's worst-case ±1 µA input leakage leaves only about 20 mV of margin at V<sub>IH</sub>; 220 kΩ removes it. Prime suspects for the current failure, in order: D1 fitted backwards, Q1 rotated so Gate and Source are swapped, and HW-067. |
 | v19 | 2026-08-24 | **Three corrections to v18, all of which reduce the work.** **HW-060 → RESOLVED, not a fault — I had the wrong part.** The board takes the **Ra-02 breakout**, not the bare 17 × 16 mm module; confirmed from the project photo, where the shield can sits on a carrier PCB with 8 through-holes per edge. Measuring that photo gives 2.54 mm pitch and ~25 mm rows, matching the footprint. The answer was in the footprint's own name — `RA-02_BREAKOUT_THT_2X8` — and I measured against a datasheet before establishing which part was being fitted, the same mistake as HW-019 and HW-059. **Blockers 2 → 1; HW-003 is now the only one.** **HW-061 MAJOR → MINOR and narrowed to C6 alone.** v18 flagged C6, C7, C8 and C9; running the numbers, only C6 is degraded — its 24 mm loop is ~20 nH, dropping the 100 nF's self-resonance to 3.6 MHz against 7.1 MHz at 3 mm. C7 and C8 are bulk caps supplying 120 mA over milliseconds, where 12 mm of trace is 12 mΩ and 1.4 mV; C9 feeds a part drawing microamps and sags 5 mV over a 5 ms burst. The v18 claim that C9's placement re-opens HW-042 is **withdrawn**. **HW-062 MAJOR → MINOR** — the v18 entry undercounted what exists: the board is entirely through-hole, so its **20 ground pads are already 20 layer-to-layer ties**. Stitching is still worth doing for the slots and for a ring around U3, but after HW-063 rather than before. **HW-063 is now the first PCB job** and the only remaining MAJOR on the layout — 295 mm of top-layer routing slotting the pour, 75 mm of it BATT+. Noted that moving those traces needs no new vias on an all-through-hole board. Added `PCB-FIXES.md`: the loop-and-return-current explanation, the arithmetic behind each call, and step-by-step Altium instructions. |
 | v18 | 2026-08-24 | **PCB received and checked. Routing is clean; one footprint is not.** Geometry read straight from `Hydro_Node_PCB.PcbDoc`: **every net is fully connected**, minimum different-net clearance is **0.351 mm**, track widths are 0.3 and 0.5 mm, annular ring is ≥ 0.25 mm everywhere but one boss pad, there are no component collisions and no duplicate designators. **HW-004 CLOSED** — there is now a solid GND pour on Top covering the whole 90 × 70 mm board, with all 20 GND pads inside it, and the pour is on the opposite layer from the routing, which is the right way round. **HW-015 CLOSED** — S1 moved from the middle of the board to the bottom edge. **HW-060 escalated MAJOR → BLOCKER and confirmed**: U3's pad rows are **25.40 mm** apart at **2.54 mm** pitch, against a module that is **17 × 16 mm** at **2.0 mm** pitch — the part cannot physically span it, so the boards would be scrap. Every other footprint measured correct, including J2/J3 at 2.50 mm (JST XH is metric). **Six new issues, all from the layout rather than the netlist: HW-061** — the radio's C6/C7/C8 sit 8.3–12.2 mm from U3 and the latch's C9 sits 15.0 mm from U2, which is HW-013's carried placement condition failing and re-opens HW-042 by the back door; **HW-062** — exactly **one via** on the whole board and it is on BATT+, so nothing stitches the top pour to the bottom-layer routing; **HW-063** — **295 mm** of top-layer routing cuts slots through the pour, 75 mm of it BATT+, the slotted-plane trap from reference §11; **HW-064** — Remove Dead Copper is off; **HW-065** — J1's boss pad has a zero annular ring and two stored DRC violations put silkscreen across S1's pads; **HW-066** — the M3 mounting holes leave 1.0 mm of board between hole and edge. Also confirmed the D3 → J2.3 change is on the board (NetJ2_3 = U1 + R7 + J2). Blockers unchanged at 2: HW-003 and now HW-060 in place of HW-004. |
