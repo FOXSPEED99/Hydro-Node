@@ -138,3 +138,72 @@ That is enough to close out the bring-up and freeze the Rev B change list.
 The 2.2 MΩ is a good prototype fix, but it is **not the production answer**. It works because your particular 74HC74 leaks far less than its datasheet allows — the worst-case number would lift a 2.2 MΩ node by 2 V. Relying on a chip being better than its specification is fine on a bench and not fine on a roof in Syria for two years.
 
 **Rev B still gets the Schmitt trigger** (HW-069), which makes the ignore-window as long as you like without depending on anyone's leakage, and puts A0 back on its driven output so HW-067 is fixed structurally instead of by resistor ratio.
+
+
+---
+
+# GROUND PLANE ON THE HAND-BUILT BOARD — AND THE RADIO
+
+Added 2026-08-24, after seeing photos of the built board.
+
+## The question: would a 7 × 9 cm copper sheet, wired to all the grounds, act as a ground plane?
+
+**Partly, and not in the way that matters most.**
+
+A ground plane works because the return current flows in copper **directly beneath the trace**, a fraction of a millimetre away, so the loop the current goes round is tiny. A separate sheet joined by wires is connected at **points**. The return current still travels along your solder tracks to reach a wire before it can get into the sheet — the loop area is exactly what it was. You gain a good low-inductance common reference between the points you bond, and some shielding. You do not gain the thing a plane is actually for.
+
+## But the plane is not what limits your range — a correction to what I told you earlier
+
+The **272 Ω** figure in HW-004 assumes **433 MHz current flowing on the board ground**. That is true when a whip is soldered straight to the PCB. It is **not** true on your build: the antenna leaves on a u.FL pigtail to an SMA bulkhead, so the RF return is **the coax shield**, and only a small common-mode leakage rides the board.
+
+What your board ground actually carries is the transmit **supply pulse**, and that is a far lower frequency:
+
+| Ground path | Inductance | Drop at 120 mA, 1 MHz |
+|---|---|---|
+| 20 mm of wire | ~20 nH | **15 mV** |
+| 60 mm solder track | ~60 nH | **45 mV** |
+| long thin daisy chain | ~150 nH | 113 mV |
+
+Out of 3600 mV. **Your perfboard grounding is not costing you range.** The imperfect ground mostly makes the radiation *pattern* less predictable — the board becomes a small part of the antenna system — rather than losing you decibels outright.
+
+## What actually helps range, in order
+
+### 1. The antenna's counterpoise — the big one, and the right job for that copper sheet
+
+At 433 MHz, λ = 69 cm and a quarter wave is **17.3 cm**. A quarter-wave whip is only half an antenna; the other half is the **counterpoise** — the metal it works against. Screw an SMA bulkhead into a plastic wall with nothing behind it and the counterpoise is whatever the coax braid happens to be, which is why range on builds like this is often unrepeatable between two identical boxes.
+
+**Use the sheet here instead of under the board:**
+
+- Mount it flat inside the enclosure wall, at the antenna end
+- Drill it and **bolt the SMA bulkhead through it**, metal to metal
+- Bond it to the coax shield at that point
+- Keep it as large as the box allows and roughly centred on the antenna
+
+A 7 × 9 cm plate is **0.13 λ** across — a partial counterpoise, not a full one. Bigger is better; a proper one wants a radius of about 17 cm. But partial beats absent by a wide margin, and it is the single highest-value thing you can do for range with the parts in your hand.
+
+### 2. The 100 nF at the module — already on today's list
+
+Directly across the Ra-02's 3.3 V and nearest GND pin, legs as short as they cut.
+
+### 3. One short, thick ground wire for the radio
+
+From the Ra-02's GND pins to the MOSFET drain, direct — **not** daisy-chained through the perfboard tracks. That takes the 60 mm path down to about 20 mm and drops the TX-pulse ground bounce from ~45 mV to ~15 mV.
+
+## If you still want the sheet under the board
+
+⚠️ **Your solder side is bare copper across the whole board.** Look at the photo — every track is exposed tinned solder. A copper sheet laid against it shorts the entire circuit instantly.
+
+If you do it anyway:
+
+- **Insulate**: Kapton tape over the solder side, or standoffs holding the sheet 3–5 mm clear
+- **Bond it to the switched ground (GND), not BATT−** — GND is what the radio and the Pro Mini return through
+- **Many short connections, not one** — especially right under the Ra-02
+- Accept that it buys you a common reference and some shielding, not a real plane
+
+My advice: put the sheet at the antenna instead. Same piece of copper, far more benefit.
+
+## ⚠️ Two things from the photos
+
+**Clean the flux.** The solder side is covered in it. This matters *today*: at 2.2 MΩ, flux residue between pads conducts enough to hold U2 pin 3 up, and the R14 change will look like it failed when it did not. Scrub with IPA and let it dry properly before you judge the result.
+
+**The u.FL connector on the Ra-02 is empty.** **Do not key the transmitter without an antenna connected.** The PA has nowhere to send its energy and it comes back into the chip. Fit the pigtail and antenna before any radio test.
