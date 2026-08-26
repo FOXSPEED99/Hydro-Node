@@ -1,13 +1,13 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v25   |   Last updated: 2026-08-24   |   Status: **Stage 1 bring-up.** Rework list narrowed to what is actually needed; A0 now floating and must be configured before sleep current is measured
+Version: v26   |   Last updated: 2026-08-26   |   Status: **Stage 1 bring-up.** Sleep current measured at 100 µA against a 25 µA budget — margin 2.43× → 1.41×; the measurement is not yet valid and the attribution is owed
 
 ## STATUS SUMMARY
-Total issues: 69   |   Open: 44   |   Resolved: 23   |   Won't fix: 2
+Total issues: 71   |   Open: 46   |   Resolved: 23   |   Won't fix: 2
 Blockers remaining: 1
 Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes. That is the only blocker.
 Schematic: `Hydro Node Schematic.SchDoc` — all 34 build-sheet connections verified. See `SCHEMATIC-CHECK.md`.
 PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm — every net connected, clearance 0.351 mm, ground pour over the whole board, all footprints correct. See `PCB-CHECK.md` and `PCB-FIXES.md`.
-Bring-up: **the board switches on.** HW-067 confirmed; R13 comes off the board. Reed chatter (**HW-069**) is being fixed on the prototype by R14 → 2.2 MΩ. Rework list in `WORKSHOP-TODAY.md`; six Stage-17 measurements still owed, starting with sleep current.
+Bring-up: **the board switches on and the magnet behaves.** HW-067 fixed by removing R13; **HW-069's R14 → 2.2 MΩ is fitted and tested good**. First sleep-current reading is **100 µA** — see **HW-070** for what that costs and how to attribute it, **HW-071** for the ultrasonic sitting on the permanently-powered rail, and **HW-046** for the D13 LED, which can draw 40 µA while looking off. Rework list in `WORKSHOP-TODAY.md`; five Stage-17 measurements still owed.
 
 ---
 
@@ -53,6 +53,69 @@ Bring-up: **the board switches on.** HW-067 confirmed; R13 comes off the board. 
 
 ---
 
+
+### HW-070 — Measured sleep current is 100 µA against a 25 µA budget
+- Severity: MAJOR
+- Status: OPEN — measured on the bench 2026-08-26
+- Component / net: whole node, sleeping, magnet away, reed at rest
+- Measurement: **~0.10 mA (100 µA)** on the built board, after R13 was removed (HW-067) and R14 raised to 2.2 MΩ (HW-069).
+- Problem: `BUILD-SHEET.md` budgets **25 µA** for sleep. The measured figure is **4× that**, and sleep is the term that dominates a two-year life because it runs for all 17,520 hours while the active work runs for minutes.
+- Impact on the two-year target, against the 4400 mAh pack and the 1373 mAh of active energy already budgeted:
+
+  | Sleep current | Sleep energy over 2 years | Total | Margin on 4400 mAh |
+  |---|---|---|---|
+  | 25 µA (target) | 438 mAh | 1811 mAh | **2.43×** |
+  | 50 µA | 876 mAh | 2249 mAh | 1.96× |
+  | 75 µA | 1314 mAh | 2687 mAh | 1.64× |
+  | **100 µA (measured)** | **1752 mAh** | **3125 mAh** | **1.41×** |
+  | 150 µA | 2628 mAh | 4001 mAh | 1.10× |
+
+  So 100 µA **does not fail the two-year target** — it eats the margin. 1.41× has to absorb Li-SOCl₂ capacity loss at rooftop temperature, passivation (HW-032), the diode drops of HW-003, and whatever spreading factor HW-047's link measurement forces. That is not enough headroom to ship against.
+- **The measurement is not yet valid, for two reasons that must be cleared first:**
+  1. **A0 is a bare floating input** (HW-035, v25 update). R13 was removed and A0 went nowhere else. A floating CMOS input oscillates around its threshold and its input stage draws crossbar current continuously. Nothing measured on this board means anything until every unused pin has a defined state in `setup()`.
+  2. **Were the three sensor cables plugged in?** See HW-071 — J3.2 puts the ultrasonic module on the switched rail permanently, so if J3 was connected the module was fully powered for the whole measurement. A reading of 0.10 mA strongly implies J3 was **unplugged**, which means the real sleep current of the assembled product is higher than this number, not equal to it.
+- Ranked suspects, with the magnitude each would contribute:
+
+  | Suspect | Order of magnitude | How to clear it |
+  |---|---|---|
+  | **Brown-out detector left enabled in power-down** | **~20 µA** | `sleep_bod_disable()` immediately before `sleep_cpu()`, or clear the BODLEVEL fuse |
+  | **D13 LED lit by an `INPUT_PULLUP`** — see HW-046 | **~40 µA** | Leave D13 an output driven **low** after `SPI.end()`, or desolder the LED |
+  | ADC left enabled | 200–300 µA | `ADCSRA = 0;` before sleeping. At 100 µA total it is probably already off — confirm anyway |
+  | Analog comparator left enabled | tens of µA | `ACSR \|= (1 << ACD);` |
+  | Floating inputs (A0 now, plus A3–A7, D0, D1) | tens of µA, unpredictable | `INPUT_PULLUP` or output-low on every one |
+  | Watchdog timer | ~5 µA | **Required** — this is the 2-minute wake source. Budget it, do not remove it |
+  | Two DS18B20 in standby on BATT+ | ~1.5 µA | Accepted in v17 when HW-053 was closed |
+  | 74HC74 quiescent | <1 µA typ, 8 µA package max at 25 °C | Nothing to do |
+  | C9 electrolytic leakage | <1 µA at 3.5 V on a 50 V part | Measure before swapping — see HW-058 |
+  | R6, R7, R9, R11, R14 | 0 µA at rest | All five sit with both ends at the same potential when idle |
+- Meter caveat: **0.10 mA on a milliamp range is one count.** The resolution is ~10 µA and the shunt's burden voltage at that range can drop enough to change the circuit's own behaviour. Re-read it on a **microamp range**, and note that a µA range's burden voltage is *worse* — if the rail sags the reading is not the sleeping current either. The clean method is a 10 Ω shunt in the BATT− lead with a millivolt reading across it, or a purpose-built low-burden meter.
+- Method to attribute the current rather than guess at it — subtract one thing at a time and record each number:
+  1. Sensors unplugged, firmware as-is → baseline.
+  2. Add `ADCSRA = 0` and the analog-comparator disable → Δ.
+  3. Give every unused pin a defined state, A0 first → Δ.
+  4. Add `sleep_bod_disable()` → Δ. Expect the biggest single step here.
+  5. Drive D13 low (or lift the LED) → Δ.
+  6. Plug J2 back in → Δ (expect ~1.5 µA).
+  7. Plug J3 back in → Δ (expect **milliamps** — that is HW-071, not a firmware problem).
+- Notes: this issue stays open until the attributed measurement exists. A single number with no breakdown cannot be designed against, and every one of the steps above is free.
+
+---
+
+### HW-071 — The ultrasonic module is permanently powered whenever the node is on
+- Severity: MAJOR
+- Status: OPEN — raised 2026-08-26 out of the HW-070 sleep-current measurement
+- Component / net: `J3.2` → **BATT+**, `J3.1` → **GND** (switched); RCWL-1670
+- Problem: the low-side MOSFET switches the whole board's ground, so "off" is genuinely off — but between wakes the node is **on**, merely asleep. J3.2 sits on BATT+ and J3.1 on the switched ground, so the ultrasonic module has **full power for every one of the 120 seconds between readings**, and for the 2-year life of the product. Nothing in the design turns it off.
+- Impact: a ranging module carries its own microcontroller and a receiver amplifier chain. Modules in this class draw **milliamps** at idle, not microamps. If that is true of the RCWL-1670 then the sleep term is not 25 µA or 100 µA — it is thousands of microamps, and the two-year target fails outright by more than an order of magnitude. This single connection can be larger than every other item in the power budget combined.
+- **Unverified and must be measured, not looked up:** I cannot reach a datasheet for the RCWL-1670 from this environment (every datasheet host is blocked by the egress proxy), and low-cost module quiescent figures are unreliable even when published. **Measure it:** power the module alone off a bench supply at 3.6 V, leave it idle with no trigger, and read the current. That number decides the severity of this issue and possibly the architecture.
+- Fix options, in order of preference:
+  1. **High-side switch the module's supply from a GPIO** — a P-channel MOSFET (or a load switch) in the J3.2 feed, gate driven from a spare pin. **D3 is free** since HW-053 was closed by tying J2.3 to BATT+, so the pin exists. This is the correct answer and it is one transistor and two resistors.
+  2. Do **not** drive J3.2 straight off a GPIO. The module's inrush and its operating current are well beyond a 40 mA pin.
+  3. If the measured idle current turns out to be genuinely microamps, close this issue with the measurement recorded — but the measurement has to exist first.
+- Related: the same question applies to the flow switch, and there the answer is already good — J1 draws current only while the contacts are closed, through R6's 1 MΩ, i.e. 3.6 µA while water is actually flowing.
+- Notes: this was missed at the schematic stage because HW-053 asked the right question about the **temperature probes** (should J2.3 be switched?) and it was answered on the numbers — 1.5 µA of DS18B20 standby is not worth a transistor. **The same question was never asked about J3**, where the answer is almost certainly the opposite. The lesson is that "which loads are on the always-powered rail, and what does each of them draw at idle" is a checklist item, not a per-part judgement call.
+
+---
 
 ### HW-058 — C7, C8 and C9 are aluminium electrolytics on a two-year rooftop product
 - Severity: MAJOR
@@ -817,6 +880,27 @@ Bring-up: **the board switches on.** HW-067 confirmed; R13 comes off the board. 
 - **Update (v25) — A0 is now one of these, and it is live on the bench right now.** R13 has been removed from the built board to clear **HW-067**, and A0 went nowhere else, so **A0 is a bare floating input**. A floating CMOS input drifts around its switching threshold and the input stage oscillates, drawing current continuously — which lands directly in the sleep-current measurement that is about to be taken.
 - **Required before that measurement means anything:** `pinMode(A0, INPUT_PULLUP)` in `setup()`, or drive it as an output low. This is not optional housekeeping; it is the difference between measuring the circuit and measuring an oscillating pin.
 - The full list for this board is A0 (now), A3, A4, A5, A6, A7, D0, D1, and the duplicate RST/TXO/RXI. Every one needs a defined state in `setup()` before the 25 µA target can be tested at all.
+- **Update (v26) — the sleep current has now been measured at 100 µA (HW-070) with A0 still floating, so that measurement does not yet mean anything.** Widening this issue from "unused pins" to the full low-power teardown, because the pins are only one of five things the firmware has to switch off and they get done together or not at all. The complete sleep routine:
+
+  ```
+  // before sleeping
+  SPI.end();                        // release SCK/MOSI/MISO
+  pinMode(13, OUTPUT);              // D13 LED off for real — see HW-046
+  digitalWrite(13, LOW);
+  ADCSRA = 0;                       // ADC off: 200-300 uA if left on
+  ACSR  |= (1 << ACD);              // analog comparator off: tens of uA
+  power_all_disable();              // PRR: timers, TWI, USART
+  // every unused pin gets a defined state
+  for (uint8_t p : {A0, A3, A4, A5, A6, A7, 0, 1}) pinMode(p, INPUT_PULLUP);
+  // then, and only then:
+  set_sleep_mode(SLEEP_MODE_PWR_DOWN);
+  cli(); sleep_enable(); sleep_bod_disable(); sei();
+  sleep_cpu();                      // BOD off is worth ~20 uA on its own
+  sleep_disable();
+  ```
+
+  `sleep_bod_disable()` must sit inside the same interrupt-disabled window as `sleep_enable()` and be followed immediately by `sleep_cpu()` — the ATmega328P only holds the BOD-disable bit for four clock cycles, so anything between them loses it silently.
+- Note that `INPUT_PULLUP` on an unused pin is correct only because the pin connects to nothing. **Never apply it to a pin that reaches the always-on latch domain** — that is exactly how HW-067 happened.
 
 ---
 
@@ -884,13 +968,30 @@ Bring-up: **the board switches on.** HW-067 confirmed; R13 comes off the board. 
 ---
 
 ### HW-046 — Check the Pro Mini for a D13 LED; D13 is the LoRa SPI clock
-- Severity: MINOR
-- Status: NEEDS INFO
+- Severity: MINOR → **MAJOR (v26)**
+- Status: **OPEN — question answered on the bench 2026-08-26: the LED is fitted and has not been removed**
 - Component / net: U2 D13, J2 pin 5 (SCK)
 - Problem: D13 on this design is **SCK for the Ra-02 SPI bus**. Many Arduino-compatible boards fit an LED plus series resistor on D13. If your module has one, it is across the SPI clock line.
 - Impact: Two effects, neither fatal but both worth removing. The LED loads the clock edge and adds capacitance to the highest-frequency net on the board, and it draws current on every SPI transaction — roughly a milliamp during each clock high, throughout every transmission, several times per wake for the whole life of the product.
 - Recommended fix: Inspect one of your modules. If a D13 LED is fitted, remove it along with the power LED and regulator you have already taken off (HW-002) — same rework step, no extra cost. If it is not fitted, close this issue.
 - Notes: The genuine SparkFun Pro Mini is generally fitted with a power LED only, but clone modules vary between batches and this is worth two minutes with a magnifier. **Tell me what you find and I will close or action it.**
+- **Update (v26) — answered: the LED is on the board and was not removed.** The power LED and the regulator came off (HW-002); the D13 LED did not. Reported as *"it's turned off anyway while in deep sleep"*, and that observation is where this issue stops being cosmetic.
+- **"Off" is not the same as "drawing nothing", and the difference is invisible.** D13's state during sleep depends entirely on what the firmware left it as:
+
+  | D13 left as | LED current | Visible? |
+  |---|---|---|
+  | `OUTPUT`, driven **LOW** | **0** | off — correct |
+  | `INPUT` (no pull-up) | **0** | off — correct |
+  | `INPUT_PULLUP` | (3.3 − 1.8) / (~35 kΩ internal + series R) ≈ **40 µA** | **glows too faintly to see in daylight — looks off** |
+  | `OUTPUT`, driven **HIGH** | ~1.5 mA | obviously lit |
+
+  The third row is the trap. The ATmega328P's internal pull-up is 20–50 kΩ, and when D13 is an input with the pull-up on, that pull-up **sources current out of the pin, through the LED, to ground**. Roughly 40 µA — which is a large fraction of the 100 µA measured in **HW-070**, and it produces a glow well below what the eye picks up against ambient light. "The LED is off" is an observation about brightness, not about current.
+- Second path to the same place: the SPI library leaves SCK as an output. If `SPI.end()` is never called, or if the last SPI clock edge left SCK **high**, D13 sits high through sleep at ~1.5 mA. That would show as 1.5 mA on the meter rather than 100 µA, so it is not what is happening here — but it is the reason the SPI teardown belongs in the sleep routine.
+- Recommended fix, now concrete and in priority order:
+  1. **Firmware, free:** after the radio is put to sleep, `SPI.end();` then `pinMode(13, OUTPUT); digitalWrite(13, LOW);`. Never leave D13 as `INPUT_PULLUP`.
+  2. **Hardware, permanent:** desolder the D13 LED (or its series resistor — easier, and it leaves the LED body in place). This also removes the capacitive load from the highest-frequency net on the board, which was the original reason this issue was raised.
+  3. Do both. Rev B should specify a Pro Mini with the LED removed as part of the same rework step as HW-002.
+- Severity raised MINOR → MAJOR because it is now a live candidate for a measured 4× overshoot on the sleep budget, not a theoretical milliamp during SPI transactions.
 
 ## RESOLVED / WON'T FIX
 
@@ -1313,6 +1414,7 @@ Bring-up: **the board switches on.** HW-067 confirmed; R13 comes off the board. 
 
 | Version | Date | Change |
 |---|---|---|
+| v26 | 2026-08-26 | **R14 → 2.2 MΩ fitted and tested good; first sleep-current measurement taken — 100 µA against a 25 µA budget.** **HW-070 raised (MAJOR)** with the cost worked out: at 25 µA the two-year margin on the 4400 mAh pack is 2.43×, at 100 µA it is **1.41×**. That does not fail the target, it eats the headroom that has to absorb capacity loss at rooftop temperature, passivation (HW-032), HW-003's diode drops and whatever spreading factor HW-047 forces — so it is worth fixing but is not a blocker. **The measurement is not yet valid**, for two reasons recorded in the issue: A0 is still a bare floating input (HW-035), and a reading of 0.10 mA implies the sensor cables were unplugged. Ranked suspects with magnitudes: BOD left enabled in power-down ~20 µA, the D13 LED ~40 µA, ADC 200–300 µA if left on, analog comparator tens of µA, floating pins tens of µA, watchdog ~5 µA and required, two DS18B20 ~1.5 µA, 74HC74 <1 µA, C9 <1 µA; R6, R7, R9, R11 and R14 all sit at 0 µA when idle. A seven-step subtraction method replaces guessing, and a meter caveat is recorded — 0.10 mA on a milliamp range is **one count**, ~10 µA of resolution plus burden voltage, so it must be re-read on a µA range or across a shunt. **HW-046 answered and raised MINOR → MAJOR:** the D13 LED is fitted and was never removed. "Off" is a statement about brightness, not current — with D13 left as `INPUT_PULLUP` the internal 20–50 kΩ pull-up sources ~40 µA out through the LED, which glows below what the eye sees in daylight and is a large fraction of the measured 100 µA. Fix is `SPI.end()` then D13 as an output driven low, plus desoldering the LED in Rev B. **HW-071 raised (MAJOR):** J3.2 is on BATT+ and J3.1 on the switched ground, so the **ultrasonic module is fully powered for all 120 seconds between wakes** and for the life of the product — a ranging module with its own MCU and receiver chain idles in milliamps, which would exceed every other term in the power budget combined. Its idle current is **unverified** (datasheet hosts are blocked from this environment) and must be measured on a bench supply before the severity is settled; the fix is a P-channel high-side switch on the J3.2 feed driven from **D3**, which HW-053 left free. Recorded why it was missed: HW-053 asked exactly this question about the temperature probes and answered it correctly on 1.5 µA — nobody asked it about J3, where the answer is likely the opposite. **HW-035 widened** from "unused pins" to the full sleep teardown, with the actual code — `SPI.end()`, D13 low, `ADCSRA = 0`, `ACSR \|= (1<<ACD)`, `power_all_disable()`, every unused pin defined, then `sleep_bod_disable()` inside the same interrupt-disabled window as `sleep_enable()` because the 328P holds that bit for only four clock cycles. |
 | v25 | 2026-08-24 | **Workshop list narrowed after three questions from the bench; two items withdrawn as unnecessary today.** **C9 removed from today's work.** Its 5 µA leakage figure is the datasheet maximum at the part's rated 50 V; sitting at 3.5 V on a 50 V part the real figure is normally well under 1 µA, and the other reason to change it — electrolytic dry-out at rooftop temperature (HW-058) — is a two-year problem that a prototype will never see. Correct order is to **measure sleep current first** and swap only if the number says so, which also makes the before-and-after meaningful. **R14 → 2.2 MΩ reclassified as optional.** It has nothing to do with the fault that was fixed; it only widens the chatter ignore-window from 57 ms to 265 ms, and since hand chatter runs over a few hundred milliseconds it will *reduce* the symptom rather than cure it — the cure is the Schmitt trigger in HW-069. Not worth sourcing a part for. **HW-035 updated with a live item: A0 is now a bare floating input**, because R13 was removed to clear HW-067 and A0 went nowhere else on the board. A floating CMOS input oscillates around its threshold and draws current continuously, which lands straight in the sleep-current measurement being taken today — so `pinMode(A0, INPUT_PULLUP)` is required *before* that measurement means anything. Recorded what removing R13 actually costs: nothing today, since no firmware feature uses A0; it was reserved for HW-022's magnet-hold gesture and returns in Rev B on the Schmitt's driven output. |
 | v24 | 2026-08-24 | **Photos of the built board received; ground-plane scope corrected and the antenna counterpoise promoted.** **HW-004 scope note:** its 272 Ω figure assumes 433 MHz current on the board ground, which is true for a whip soldered to the PCB and **not** true for this build — the antenna leaves on a u.FL pigtail to an SMA bulkhead, so the RF return is the coax shield. What the board ground actually carries is the TX supply pulse, where 60 nH of solder track costs **45 mV out of 3600** at 1 MHz. The pour on the production PCB remains right and free, but an imperfect ground on the hand-built board is **not** what limits range; it mostly makes the radiation pattern unpredictable rather than losing dB. Also recorded that a copper sheet bonded by wires is **not** a ground plane — a plane works because the return flows directly beneath the trace, whereas a bonded sheet is joined at points and leaves the loop area unchanged. **HW-040 updated and promoted to the highest-value range item:** a quarter-wave whip is half an antenna and the counterpoise is the other half. λ = 69 cm, quarter wave 17.3 cm; an SMA bulkhead in a plastic wall with nothing behind it leaves the coax braid as the counterpoise, which is why range on such builds is not repeatable between identical boxes — and why HW-047's link measurement would be measuring the wrong thing until it is fixed. Requirement added: a plate inside the enclosure wall with the bulkhead bolted through it metal-to-metal and bonded to the coax shield. The bench's 7 × 9 cm sheet is 0.13 λ — partial but far better than absent, and worth much more there than under the board. Workshop file gained the full explanation plus two warnings from the photos: **clean the flux** before judging the 2.2 MΩ change, since residue conducts enough at that value to hold pin 3 up, and **do not key the transmitter with the u.FL empty**. |
 | v23 | 2026-08-24 | **Workshop rework list issued (`WORKSHOP-TODAY.md`), and one earlier instruction corrected.** **HW-067's advice to raise R9 to 1 MΩ was wrong and is withdrawn** — R9 is how A1 pulls the flip-flop's active-low reset down against R11's 1 MΩ, so it must be the *stronger* side of that divider. At 1 MΩ the reset pin would only reach 1.75 V against a 1.05 V limit and the MCU could never command a shutdown; at the as-built 100 kΩ it reaches 0.32 V and works. **R9 stays at 100 kΩ.** The A1 path was never the same case as A0 — its off-state leak pushes the reset pin *up*, the inactive direction — so removing R13 is the whole fix. **HW-069's bench fix changed from C12 → 1 µF to R14 → 2.2 MΩ**, which leaves the clock's rising edge at 10 µs instead of stretching it to 100 µs, gives a 265 ms ignore-window against 57 ms, and drops the magnet-held current from 7.4 µA to 1.6 µA. Recorded that 2.2 MΩ works only because real HC parts leak nanoamps where the datasheet allows ±1 µA — which through 2.2 MΩ would lift the pin 2.2 V and reproduce HW-067 by another road — so it is a prototype fix and the **Schmitt trigger is now required for production, not optional**; 1 MΩ is the highest value defensible from the datasheet alone. Today's list also swaps C9 to ceramic before the sleep-current measurement, since an aluminium can on the always-live latch rail would inflate the reading by up to its 5 µA leakage spec against a 25 µA target, and adds a second 100 nF directly at U3 rather than reworking C6's placement. |
