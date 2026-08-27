@@ -349,30 +349,55 @@ void loop()
 
 
 /* ==========================================================================
- *  WRITE YOUR RESULTS HERE
+ *  RESULTS — measured on the hand-built board, 2026-08-27
+ *  Pro Mini + Ra-02 only, no sensors connected.
  * ==========================================================================
  *
- *   Stage | What it adds                       | Measured | Drop from previous
- *   ------|------------------------------------|----------|-------------------
- *     0   | nothing — radio still in standby   |          |
- *     1   | radio asleep                       |          |
- *     2   | ADC + comparator off               |          |
- *     3   | pin 13 LED properly off            |          |   <-- the LED
- *     4   | all pins defined                   |          |
- *     5   | brown-out detector off             |          |
- *     6   | watchdog running (the real thing)  |          |   (this one goes UP)
+ *   Stage | What it adds                       | Measured  | Change
+ *   ------|------------------------------------|-----------|-----------
+ *     0   | nothing — radio still in standby   |  1.87 mA  |    —
+ *     1   | radio asleep                       |  0.68 mA  | -1190 uA
+ *     2   | ADC + comparator off               |  0.27 mA  |  -410 uA
+ *     3   | pin 13 driven low                  |  0.020 mA |  -250 uA  <--
+ *     4   | all pins defined                   |  0.020 mA |     0
+ *     5   | brown-out detector off             |   4.8 uA  |   -15 uA
+ *     6   | watchdog running (the real thing)  |   7.8 uA  |   +3.0 uA
+ *
+ *  FINAL: 7.8 uA against a 25 uA target. Beaten by more than three times.
+ *  Two-year margin on the 4400 mAh pack goes from 1.41x to 2.91x at SF7, and
+ *  SF9 goes from 0.92x (fails) to 1.39x (passes).
  *
  *
- *  WHAT TO EXPECT, ROUGHLY
+ *  THE ONE SURPRISE — STAGE 3 DROPPED 250 uA, NOT THE 40 uA PREDICTED
  *
- *     0  ~1.70 mA     the radio dominates everything
- *     1  ~0.10 mA     should land near the number you already measured
- *     2  ~0.10 mA     little change, the ADC was probably already off
- *     3  ~0.06 mA     if this drops ~0.04 mA, the LED was your biggest item
- *     4  ~0.04 mA
- *     5  ~0.02 mA     or no change at all, if the BOD fuse is already off
- *     6  ~0.025 mA    the watchdog costs about 5 uA and is not optional
+ *  Pin 13 is two things on one wire: the LED, and SCK going to the Ra-02.
  *
- *  If a stage does NOT drop the way it should, that is the interesting result,
- *  not a failure. Write down what actually happened.
+ *  As INPUT_PULLUP the pin is not driven. The internal ~35k pull-up and the
+ *  LED divide against each other and the pin settles at the LED's forward
+ *  voltage, about 1.8 V. That is neither a valid high nor a valid low, and
+ *  the SX1278's SCK input is looking at it. A CMOS input held mid-rail turns
+ *  on both halves of its input stage at once and conducts continuously.
+ *
+ *      through the LED itself .................  ~40 uA
+ *      crossbar current inside the SX1278 ..... ~210 uA
+ *      ---------------------------------------------------
+ *      measured total ......................... 250 uA
+ *
+ *  So most of it burns in the radio module, not in the LED. The LED is not
+ *  just a load — it is a clamp that holds a logic input at an invalid level
+ *  whenever the pin is left undriven.
+ *
+ *  Driving D13 low fixes it, and that is what got this board to 7.8 uA. But
+ *  the bootloader flashes D13 on every reset and SPI.end() releases the pin,
+ *  so a firmware-only fix has to be remembered forever, with no warning when
+ *  it is not — the only symptom is a glow you cannot see in daylight.
+ *
+ *  ==> DESOLDER THE D13 LED (or its series resistor). See HW-046.
+ *
+ *
+ *  THE OTHER RESULT WORTH KNOWING — STAGE 4 CHANGED NOTHING
+ *
+ *  Giving eleven floating pins a defined state measured ZERO change, against
+ *  a predicted "tens of microamps". Keep doing it — it is free, and floating
+ *  input current rises with temperature — but it was not the problem here.
  * ========================================================================== */

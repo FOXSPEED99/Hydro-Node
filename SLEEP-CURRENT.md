@@ -3,6 +3,146 @@
 Written 2026-08-26, in plain language.
 Your test: **Pro Mini + LoRa module only. No sensors plugged in.** Result: **0.10 mA**.
 
+> ## ▶ RESULTS ARE IN — 2026-08-27. FINAL FIGURE **7.8 µA.**
+> Everything below this box was written before the test. It is kept because the
+> reasoning still explains *why*, but **the numbers in PART 1 are now out of
+> date** — read `RESULTS` immediately below first.
+
+---
+
+# RESULTS — MEASURED 2026-08-27
+
+| Stage | What it added | Measured | Change |
+|---|---|---|---|
+| 0 | nothing — radio in standby | **1.87 mA** | — |
+| 1 | radio asleep | **0.68 mA** | **−1190 µA** |
+| 2 | ADC + comparator off | **0.27 mA** | **−410 µA** |
+| 3 | pin 13 LED properly off | **0.020 mA** | **−250 µA** |
+| 4 | all pins given a defined state | **0.020 mA** | 0 |
+| 5 | brown-out detector off | **4.8 µA** | **−15 µA** |
+| 6 | watchdog running — the real product | **7.8 µA** | +3.0 µA |
+
+**Final: 7.8 µA. The target was 25 µA. You beat it by more than three times.**
+
+## What this does to the battery
+
+| | Sleep energy over 2 years | Total needed | Margin on the 4400 mAh pack |
+|---|---|---|---|
+| The old measurement, 100 µA | 1752 mAh | 3125 mAh | 1.41× |
+| The design target, 25 µA | 438 mAh | 1811 mAh | 2.43× |
+| **What you achieved, 7.8 µA** | **137 mAh** | **1510 mAh** | **2.91×** |
+
+And the thing that actually mattered — the gamble on the radio link:
+
+| | at 100 µA | at 7.8 µA |
+|---|---|---|
+| **SF7** (easy link) | 1.41× ✅ | **2.91× ✅** |
+| **SF9** (harder link) | **0.92× ❌ FAILS** | **1.39× ✅ PASSES** |
+
+**The bet is off the table.** Whatever HW-047's link measurement comes back as,
+the battery is no longer the thing that decides it. That was the whole point of
+doing this, and it is done.
+
+---
+
+## THE ONE SURPRISE — AND IT IS IMPORTANT
+
+**Stage 2 → stage 3 dropped 250 µA. I predicted 40 µA.** I was wrong by six
+times, and the reason matters more than the number.
+
+You also reported the key clue yourself: *"the led is on but it's so weak"* in
+stages 1 and 2, and gone from stage 3.
+
+Here is what is happening. Pin 13 is two things at once — the **LED**, and
+**SCK, the clock wire going to the LoRa module**.
+
+In stages 1 and 2 pin 13 is `INPUT_PULLUP`. So it is not driven; it is only
+weakly held up through about 35 kΩ, and the LED hangs off it pulling down. Those
+two fight, and the pin settles at **the LED's forward voltage — roughly 1.8 V**.
+
+1.8 V is the problem. It is not a high and it is not a low. **It is exactly
+halfway**, and the LoRa module's SCK input is staring at it.
+
+A digital input given a halfway voltage does not sit quietly. Both halves of its
+input transistor pair switch on at the same time and current pours straight from
+3.3 V to ground through the chip, continuously, for as long as the halfway
+voltage is there. That is where the 250 µA went — **most of it inside the LoRa
+module, not in the LED**.
+
+So the LED costs about 40 µA of its own, and then causes another ~210 µA in a
+completely different chip by holding the clock line at a voltage that means
+nothing.
+
+### What to do about it
+
+**Desolder the D13 LED, or its series resistor.** Do not rely on firmware alone.
+
+Driving pin 13 low in the sleep routine fixes it — you measured that, it is
+stage 3. But it only works as long as *every* piece of code always remembers.
+The bootloader flashes that LED on every reset. A library that calls `SPI.end()`
+leaves the pin as an input. One forgotten line anywhere and you are back to
+250 µA and there is no warning, because the only symptom is a glow you cannot
+see in daylight.
+
+Take the part off and the problem cannot come back. This is HW-046 and it is no
+longer a cosmetic issue.
+
+**Optional 10-second confirmation:** flash stage 2 again and put the meter on
+pin 13 while it sleeps. If it reads about 1.8 V instead of 0 V or 3.3 V, the
+explanation above is confirmed directly.
+
+---
+
+## THE OTHER THING I GOT WRONG
+
+**Stage 3 → stage 4 changed nothing.** Both read 0.020 mA.
+
+Stage 4 is the one that gives every floating pin a defined state — A0, A3–A7,
+D0, D1, D3, and the two ultrasonic pins. I said in HW-035 that floating pins
+would cost "tens of microamps" and that the measurement would be meaningless
+until they were fixed.
+
+**On this board, they measured below what the meter can see — under about
+10 µA, and possibly zero.** That was over-stated.
+
+Keep the pin setup anyway. It costs nothing, it is not guaranteed to stay this
+harmless across temperature or across different chips, and A0 in particular sits
+next to the latch circuit. But it was not the problem, and I should not have
+put it ahead of the LED.
+
+---
+
+## WHAT THE OTHER STAGES CONFIRMED
+
+**Stage 0 → 1, −1190 µA. The radio is the whole game.** An awake SX1278 is
+worth more than every other item on this board put together. Your radio-sleep
+code works and the module answered its ID check.
+
+**Stage 1 → 2, −410 µA. The ADC was on after all.** I said earlier that your
+0.10 mA proved the ADC was already off. That was true of *your* firmware, not
+of a bare sketch — this stage is measuring the default state. `ADCSRA = 0` is
+worth about 250 µA on its own and it is one line.
+
+**Stage 4 → 5, −15 µA. The brown-out detector is real and your fuse has it
+enabled.** Matches the datasheet's ~20 µA. This is the line that has to sit in
+exactly the right place or it silently does nothing.
+
+**Stage 5 → 6, +3.0 µA. The watchdog costs 3 µA.** Cheaper than the 5 µA
+budgeted, and you must pay it — it is what wakes the node every 2 minutes.
+
+---
+
+## WHAT IS LEFT
+
+1. **Port the stage-6 sequence into the real node firmware.** Your production
+   firmware is still the one that measured 100 µA. The hardware is now proven
+   capable of 7.8 µA; the sketch shows exactly which lines get you there.
+2. **Take the D13 LED off the board.** See above.
+3. **Measure the ultrasonic module on its own** at 3.6 V, idle, on a bench
+   supply. It is permanently powered on the sleeping rail and it is now the
+   single largest unknown in the power budget — bigger than everything the
+   Pro Mini and the radio do together. That is HW-071.
+
 ---
 
 ## PART 1 — "0.10 mA STILL GIVES 2 YEARS. ISN'T THAT ENOUGH?"

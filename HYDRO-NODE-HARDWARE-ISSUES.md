@@ -1,5 +1,5 @@
 # HYDRO NODE — HARDWARE ISSUE TRACKER
-Version: v26b  |   Last updated: 2026-08-26   |   Status: **Stage 1 bring-up.** Sleep current measured at 100 µA against a 25 µA budget — margin 2.43× → 1.41×; the measurement is not yet valid and the attribution is owed
+Version: v27   |   Last updated: 2026-08-27   |   Status: **Stage 1 bring-up.** Sleep-current teardown complete — **7.8 µA measured, against a 25 µA target.** The SF9 battery gamble is off the table
 
 ## STATUS SUMMARY
 Total issues: 71   |   Open: 46   |   Resolved: 23   |   Won't fix: 2
@@ -7,7 +7,7 @@ Blockers remaining: 1
 Production-ready: NO — the two Li-SOCl₂ cells are hard-paralleled without blocking diodes. That is the only blocker.
 Schematic: `Hydro Node Schematic.SchDoc` — all 34 build-sheet connections verified. See `SCHEMATIC-CHECK.md`.
 PCB: `Hydro_Node_PCB.PcbDoc`, 90 × 70 mm — every net connected, clearance 0.351 mm, ground pour over the whole board, all footprints correct. See `PCB-CHECK.md` and `PCB-FIXES.md`.
-Bring-up: **the board switches on and the magnet behaves.** HW-067 fixed by removing R13; **HW-069's R14 → 2.2 MΩ is fitted and tested good**. First sleep-current reading is **100 µA** — see **HW-070** for what that costs and how to attribute it, **HW-071** for the ultrasonic sitting on the permanently-powered rail, and **HW-046** for the D13 LED, which can draw 40 µA while looking off. Plain-language walkthrough of the sleep current in `SLEEP-CURRENT.md`. Rework list in `WORKSHOP-TODAY.md`; five Stage-17 measurements still owed.
+Bring-up: **the board switches on, the magnet behaves, and the sleep current is solved.** HW-067 fixed by removing R13; **HW-069's R14 → 2.2 MΩ is fitted and tested good**. The seven-stage teardown in `firmware/sleep_test/sleep_test.ino` ran on 2026-08-27 and landed at **7.8 µA — three times better than the 25 µA target**, which takes SF9 from **0.92× (fails)** to **1.39× (passes)** and decouples the battery from HW-047's link measurement. The single biggest item was **not** what was predicted: the D13 LED cost **250 µA**, not 40 µA, because it clamps SCK to ~1.8 V and the Ra-02's input buffer burns crossbar current on it — see **HW-046**, now firmly a remove-the-part fix. Plain-language write-up in `SLEEP-CURRENT.md`.
 
 ---
 
@@ -55,8 +55,46 @@ Bring-up: **the board switches on and the magnet behaves.** HW-067 fixed by remo
 
 
 ### HW-070 — Measured sleep current is 100 µA against a 25 µA budget
-- Severity: MAJOR
-- Status: OPEN — measured on the bench 2026-08-26
+- Severity: MAJOR → **MINOR (v27)**
+- Status: **OPEN, but the target is proven met in test firmware. 2026-08-27: the seven-stage teardown ran and landed at 7.8 µA.**
+- **RESULT (v27) — the hardware reaches 7.8 µA, three times better than the 25 µA target.** Full stage table from `firmware/sleep_test/sleep_test.ino`:
+
+  | Stage | Added | Measured | Δ |
+  |---|---|---|---|
+  | 0 | nothing — radio in standby | 1.87 mA | — |
+  | 1 | radio commanded to sleep | 0.68 mA | **−1190 µA** |
+  | 2 | ADC + comparator off, peripherals unclocked | 0.27 mA | **−410 µA** |
+  | 3 | D13/SCK driven low | **0.020 mA** | **−250 µA** |
+  | 4 | every unused pin given a defined state | 0.020 mA | **0** |
+  | 5 | BOD disabled in power-down | **4.8 µA** | **−15 µA** |
+  | 6 | watchdog running — the production case | **7.8 µA** | +3.0 µA |
+
+- **What this does to the SF9 gamble, which was the entire justification for this issue:**
+
+  | | Sleep energy / 2 yr | SF7 total | SF7 margin | SF9 total | SF9 margin |
+  |---|---|---|---|---|---|
+  | 100 µA measured | 1752 mAh | 3125 mAh | 1.41× | 4779 mAh | **0.92× FAILS** |
+  | 25 µA target | 438 mAh | 1811 mAh | 2.43× | 3465 mAh | 1.27× |
+  | **7.8 µA achieved** | **137 mAh** | **1510 mAh** | **2.91×** | **3164 mAh** | **1.39× PASSES** |
+
+  **The battery is no longer coupled to HW-047's outcome.** Whatever spreading factor the link measurement forces, the pack covers it. That was the stated reason to chase this and it is discharged.
+- **Why this stays OPEN at MINOR rather than closing:** 7.8 µA is the *test sketch*. The production firmware is still the one that measured 100 µA. This closes when the stage-6 sequence is ported into the node firmware and re-measured there. The hardware question is settled; the firmware one is not.
+- **Prediction accuracy, recorded because two of the calls were wrong and the errors point somewhere useful:**
+
+  | Stage | Predicted | Actual | |
+  |---|---|---|---|
+  | 0 | ~1.70 mA | 1.87 mA | close |
+  | 1 | ~0.10 mA | 0.68 mA | **wrong** — assumed the bare sketch would match the user's firmware; it has the ADC on and the SCK problem |
+  | 2 | ~0.10 mA | 0.27 mA | wrong for the same reason |
+  | 3 | ~0.06 mA (−40 µA) | 0.020 mA (**−250 µA**) | **wrong by 6×** — see HW-046, the mechanism is not what was stated |
+  | 4 | ~0.04 mA | no change | **wrong** — see HW-035, floating pins measured below resolution |
+  | 5 | ~0.02 mA | 4.8 µA (−15 µA) | correct, matches the datasheet's ~20 µA BOD figure |
+  | 6 | ~0.025 mA | 7.8 µA (+3.0 µA) | correct, watchdog slightly cheaper than the 5 µA budgeted |
+
+  The two misses share a cause: **both were rules of thumb applied without asking what the specific circuit does with them.** The LED figure came from LED current alone and ignored what an undriven SCK pin does to the chip at the other end of the wire; the floating-pin figure came from a general CMOS argument with no measurement behind it. The measured board settled both in twenty minutes, which is the argument for building the test rig rather than reasoning further.
+- Original entry follows.
+- Severity when raised: MAJOR
+- Status when raised: OPEN — measured on the bench 2026-08-26
 - Component / net: whole node, sleeping, magnet away, reed at rest
 - Measurement: **~0.10 mA (100 µA)** on the built board, after R13 was removed (HW-067) and R14 raised to 2.2 MΩ (HW-069).
 - Problem: `BUILD-SHEET.md` budgets **25 µA** for sleep. The measured figure is **4× that**, and sleep is the term that dominates a two-year life because it runs for all 17,520 hours while the active work runs for minutes.
@@ -925,6 +963,13 @@ Bring-up: **the board switches on and the magnet behaves.** HW-067 fixed by remo
 
   `sleep_bod_disable()` must sit inside the same interrupt-disabled window as `sleep_enable()` and be followed immediately by `sleep_cpu()` — the ATmega328P only holds the BOD-disable bit for four clock cycles, so anything between them loses it silently.
 - Note that `INPUT_PULLUP` on an unused pin is correct only because the pin connects to nothing. **Never apply it to a pin that reaches the always-on latch domain** — that is exactly how HW-067 happened.
+- **MEASURED (v27) — this issue was over-stated, and the correction is recorded rather than quietly dropped.** HW-070's teardown isolates exactly this change as its stage 3 → stage 4 step: giving A0, A3–A7, D0, D1, D3 and the two ultrasonic pins a defined state, on a board where they had all been floating.
+
+  **The measured change was zero.** Both stages read 0.020 mA, and the meter's resolution there is roughly 10 µA — so the true cost of eleven floating pins on this board is **under ~10 µA in total, and possibly none of it.**
+
+  The v25 claim that *"nothing measured on this board means anything until every unused pin has a defined state"* was wrong. The measurement was perfectly meaningful; floating A0 was not what inflated it. The 250 µA was the D13 LED (HW-046), and this issue was put ahead of it on a rule of thumb rather than a number.
+- **The requirement stands anyway, for reasons that survive the measurement:** it costs nothing, floating-input current is strongly temperature- and part-dependent so a bench reading at room temperature on one unit does not generalise to a 70–85 °C roof (HW-027), and A0 in particular sits one removed resistor away from the latch domain. Keep the pin setup in the firmware. Just do not sequence it ahead of anything with a measured cost.
+- Severity remains MINOR, which was correct; the v25 *emphasis* was not.
 
 ---
 
@@ -1016,6 +1061,22 @@ Bring-up: **the board switches on and the magnet behaves.** HW-067 fixed by remo
   2. **Hardware, permanent:** desolder the D13 LED (or its series resistor — easier, and it leaves the LED body in place). This also removes the capacitive load from the highest-frequency net on the board, which was the original reason this issue was raised.
   3. Do both. Rev B should specify a Pro Mini with the LED removed as part of the same rework step as HW-002.
 - Severity raised MINOR → MAJOR because it is now a live candidate for a measured 4× overshoot on the sleep budget, not a theoretical milliamp during SPI transactions.
+- **MEASURED (v27) — it costs 250 µA, not 40 µA, and the mechanism is not the one stated above.** The stage 2 → stage 3 delta in HW-070's teardown isolates exactly this: **0.27 mA → 0.020 mA**. The user also reported the confirming symptom unprompted — *"the led is on but it's so weak"* in stages 1 and 2, and dark from stage 3.
+- **The mechanism, corrected.** D13 is two things on the same wire: the LED, and **SCK to the Ra-02**. With D13 as `INPUT_PULLUP` the pin is not driven — it is held up weakly through the internal 20–50 kΩ pull-up while the LED pulls it down. The two divide, and the pin settles at **the LED's forward voltage, roughly 1.8 V**.
+
+  1.8 V is neither a valid high nor a valid low, and **the SX1278's SCK input is looking at it.** A CMOS input held mid-rail turns on both halves of its input stage at once and conducts continuously from supply to ground. The bulk of the 250 µA is therefore burning **inside the radio module**, not in the LED:
+
+  | | |
+  |---|---|
+  | Through the LED itself | ~40 µA — the figure originally given |
+  | Crossbar current in the SX1278's SCK input buffer | **~210 µA** |
+  | **Total measured** | **250 µA** |
+
+  The 40 µA estimate was right about the LED and wrong about the consequence. The LED is not just a load; it is a **clamp that holds a logic input at an invalid level whenever the pin is not actively driven**, and the cost lands in a different chip.
+- **Fix, now firm: desolder the D13 LED or its series resistor. Do not rely on firmware.** Driving D13 low in the sleep routine does fix it — that is stage 3, measured — but it only holds while *every* piece of code remembers, forever. The bootloader flashes D13 on every reset; `SPI.end()` releases the pin to an input; any library or future feature can leave it undriven. There is no warning when it goes wrong, because the only symptom is a glow invisible in daylight and a silent 250 µA. Removing the part makes the failure impossible instead of merely unlikely.
+- **Both fixes, not one:** firmware drives D13 low (free, immediate, and it is what got the bench to 7.8 µA), and Rev B specifies a Pro Mini with the LED removed as part of the same rework step as HW-002.
+- Optional direct confirmation, ten seconds: flash stage 2 and meter D13 while it sleeps. ~1.8 V confirms the mechanism above; 0 V or 3.3 V would refute it.
+- **General lesson, and it is the second time this exact shape has bitten this design:** an indicator part tied to a signal line is not passive. HW-067 was a resistor sized for pin protection without asking what it does to the node it lands on; this is an LED chosen as an indicator without asking what it does to the logic level of the wire it shares. **Anything hung on a signal net has to be checked against that net's valid logic levels in every state the pin can be left in — including undriven.**
 
 ## RESOLVED / WON'T FIX
 
@@ -1438,6 +1499,7 @@ Bring-up: **the board switches on and the magnet behaves.** HW-067 fixed by remo
 
 | Version | Date | Change |
 |---|---|---|
+| v27 | 2026-08-27 | **Sleep-current teardown run on hardware. 7.8 µA measured against a 25 µA target — the battery gamble is off the table.** Seven stages, seven flashes: 1.87 mA → 0.68 → 0.27 → 0.020 → 0.020 → 4.8 µA → **7.8 µA** with the watchdog running. **HW-070 MAJOR → MINOR**, staying open only because 7.8 µA is the test sketch and the production firmware is still the one that measured 100 µA; the hardware question is settled, the firmware one is not. The margin that justified the whole exercise: at 100 µA, **SF9 needed 4779 mAh of a 4400 mAh pack and failed at 0.92×**; at 7.8 µA it needs 3164 mAh and **passes at 1.39×**, with SF7 at 2.91×. **Whatever HW-047's link measurement returns, the battery no longer decides it.** **HW-046: the D13 LED measured 250 µA, not the 40 µA predicted, and the stated mechanism was wrong.** D13 is both the LED and **SCK to the Ra-02**. Left as `INPUT_PULLUP` the pin is not driven — the internal 20–50 kΩ pull-up and the LED divide against each other and the pin sits at **the LED's forward voltage, ~1.8 V**, which is neither a valid high nor a valid low. The SX1278's SCK input holds both halves of its input stage on at that level and conducts continuously, so roughly **210 of the 250 µA burns inside the radio module, not in the LED**. The user reported the confirming symptom unprompted — *"the led is on but it's so weak"* in stages 1–2, dark from stage 3. **Fix is now firm: desolder the LED or its series resistor, do not rely on firmware** — the bootloader flashes D13 on every reset and `SPI.end()` releases the pin, so a firmware-only fix has to be remembered forever with no warning when it is not. **General lesson, the second time this shape has bitten this design:** HW-067 was a resistor sized for pin protection without asking what it does to the node it lands on; this is an indicator chosen without asking what it does to the logic level of the wire it shares. Anything hung on a signal net must be checked against that net's valid levels **in every state the pin can be left in, including undriven.** **HW-035 was over-stated and is corrected rather than quietly dropped:** stage 3 → 4 gave eleven floating pins a defined state and the measured change was **zero** — under ~10 µA total, possibly none. The v25 claim that no measurement meant anything until A0 was configured was wrong; floating A0 was not what inflated the reading. The requirement stands (free, temperature-dependent, A0 sits next to the latch domain) but it should not have been sequenced ahead of anything with a measured cost. Also confirmed by measurement: the radio dominates everything (−1190 µA when told to sleep), `ADCSRA = 0` is worth ~250 µA in a default sketch, the BOD fuse **is** enabled on this Pro Mini (−15 µA, matching the datasheet's ~20 µA), and the watchdog costs **3.0 µA** rather than the 5 µA budgeted. Both prediction misses shared one cause — a rule of thumb applied without asking what the specific circuit does with it — and both were settled by the bench in twenty minutes, which is the argument for building the rig instead of reasoning further. |
 | v26b | 2026-08-26 | **Test firmware written, and the "isn't two years enough?" challenge answered properly.** The challenge was fair and the first answer to it was weak — a safety factor quoted in the abstract. **The real argument is that the 1.41× is spent before HW-047's link measurement has been taken.** Re-running HW-003's margin table at the measured 100 µA instead of the budgeted 25 µA: at **SF7** the design needs 3125 mAh of a 4400 mAh pack and passes at 1.41×; at **SF9** it needs **4779 mAh and fails**, running out roughly two months short, where at 25 µA sleep SF9 passes at 1.27×. 50 m through thick concrete is exactly the case where SF9 is plausible — it is why HW-003 chose two cells over one. So 100 µA is a **bet on the link being easy**, 25 µA wins either way, and closing the gap costs five lines of firmware and no parts. Not a blocker, not urgent, but it should be fixed *before* the link is measured so that measurement is not simultaneously a battery decision. **Added `firmware/sleep_test/sleep_test.ino`** — a cumulative seven-stage teardown selected by one `#define STAGE n`. It reports through the D13 LED rather than serial, because a USB-TTL adapter back-feeds the board through RX and DTR and invalidates every reading; it **proves** the radio is asleep rather than assuming it, by requiring `RegVersion` = `0x12` and reading `RegOpMode` back after the two-step FSK-sleep-then-LoRa-sleep write; SPI is bit-banged so no library version can change the result; `ADCSRA = 0` runs before `power_all_disable()` because taking the ADC's clock first makes ADEN unreachable; and all blinking happens before `power_all_disable()` because it stops Timer0 and therefore `delay()`. **Stages 1–2 deliberately leave D13 as `INPUT_PULLUP`** and stage 3 parks it low, so the stage 2 → 3 delta is a direct measurement of the D13 LED and settles HW-046 with a number. A1, A2, D5 and D4 are left as plain inputs with the reason in a comment — all four have a defined level from board resistors, and a pull-up on a latch-domain pin is exactly how HW-067 happened. **Verified by compiling all seven stages against real avr-libc for the ATmega328P and disassembling stage 5**, confirming `MCUCR |= BODS|BODSE` → `MCUCR = BODS` → `sei` → `sleep` lands inside the chip's 3-cycle BODS window and that `SMCR` is set to power-down. Also fixed a typo in HW-035, which named the Pro Mini as U2; it is U1. |
 | v26a | 2026-08-26 | **Test conditions confirmed: the 100 µA was measured with no sensors connected — Pro Mini and Ra-02 only.** Two positive findings recorded in HW-070 that the number itself proves: **the Ra-02 is genuinely asleep** (standby would be ~1.6 mA, sixteen times the whole reading), which closes the largest single risk in the sleep budget, and **the ADC is already disabled** (200–300 µA on its own). Also recorded that the four remaining suspects sum to ~95 µA against a measured 100 µA, so **there is no unexplained residual and no hidden hardware fault to hunt** — the whole overshoot is a firmware teardown that costs nothing to fix. HW-071 updated: nothing measured so far bears on it, since J3 was unplugged, so the product's real sleep current remains unknown. Added `SLEEP-CURRENT.md` — the same content in plain language, with a dark-room test for the D13 LED, the five lines of code in order, and the warning that `sleep_bod_disable()` must sit between `sleep_enable()` and `sleep_cpu()` because the chip holds that bit for only four clock cycles. |
 | v26 | 2026-08-26 | **R14 → 2.2 MΩ fitted and tested good; first sleep-current measurement taken — 100 µA against a 25 µA budget.** **HW-070 raised (MAJOR)** with the cost worked out: at 25 µA the two-year margin on the 4400 mAh pack is 2.43×, at 100 µA it is **1.41×**. That does not fail the target, it eats the headroom that has to absorb capacity loss at rooftop temperature, passivation (HW-032), HW-003's diode drops and whatever spreading factor HW-047 forces — so it is worth fixing but is not a blocker. **The measurement is not yet valid**, for two reasons recorded in the issue: A0 is still a bare floating input (HW-035), and a reading of 0.10 mA implies the sensor cables were unplugged. Ranked suspects with magnitudes: BOD left enabled in power-down ~20 µA, the D13 LED ~40 µA, ADC 200–300 µA if left on, analog comparator tens of µA, floating pins tens of µA, watchdog ~5 µA and required, two DS18B20 ~1.5 µA, 74HC74 <1 µA, C9 <1 µA; R6, R7, R9, R11 and R14 all sit at 0 µA when idle. A seven-step subtraction method replaces guessing, and a meter caveat is recorded — 0.10 mA on a milliamp range is **one count**, ~10 µA of resolution plus burden voltage, so it must be re-read on a µA range or across a shunt. **HW-046 answered and raised MINOR → MAJOR:** the D13 LED is fitted and was never removed. "Off" is a statement about brightness, not current — with D13 left as `INPUT_PULLUP` the internal 20–50 kΩ pull-up sources ~40 µA out through the LED, which glows below what the eye sees in daylight and is a large fraction of the measured 100 µA. Fix is `SPI.end()` then D13 as an output driven low, plus desoldering the LED in Rev B. **HW-071 raised (MAJOR):** J3.2 is on BATT+ and J3.1 on the switched ground, so the **ultrasonic module is fully powered for all 120 seconds between wakes** and for the life of the product — a ranging module with its own MCU and receiver chain idles in milliamps, which would exceed every other term in the power budget combined. Its idle current is **unverified** (datasheet hosts are blocked from this environment) and must be measured on a bench supply before the severity is settled; the fix is a P-channel high-side switch on the J3.2 feed driven from **D3**, which HW-053 left free. Recorded why it was missed: HW-053 asked exactly this question about the temperature probes and answered it correctly on 1.5 µA — nobody asked it about J3, where the answer is likely the opposite. **HW-035 widened** from "unused pins" to the full sleep teardown, with the actual code — `SPI.end()`, D13 low, `ADCSRA = 0`, `ACSR \|= (1<<ACD)`, `power_all_disable()`, every unused pin defined, then `sleep_bod_disable()` inside the same interrupt-disabled window as `sleep_enable()` because the 328P holds that bit for only four clock cycles. |
