@@ -1,0 +1,49 @@
+1x Arduino Pro Mini 3.3v
+
+1x SX1278 LoRa-02 Module
+
+1x 74HC74AP flip-flop
+
+1x Reed Switch + Small Magnet
+
+1x 1N5819 SCHOTTKY DIODE
+
+1x Buzzer
+
+9x 0.1uF - (104) Ceramic Capacitor
+
+2x 10uf 50V Electrolytic Capacitor
+
+1x 100uf 25V Electrolytic Capacitor
+
+1x IRLZ44N N-Channel MOSFET
+
+2x B2B-XH-A JST Connector
+
+1x B3B-XH-A JST Connector
+
+1x B4B-XH-A JST Connector
+
+1x 1K Ohm 1/4W Resistor
+
+3x 1M Ohm 1/4W Resistor
+
+6x 100 Ohm 1/4W Resistor
+
+1x 100K Ohm 1/4W Resistor
+
+1x 330 Ohm 1/4W Resistor
+
+1x 4.7K Ohm 1/4W Resistor
+
+1x 2.2M Ohm 1/4W Resistor
+
+1x RCWL-1670 Waterproof Ultrasonic
+
+1x DS18B20 Waterproof Temperature Sensor
+
+1x Water Flow switch
+
+1x IPEX to SMA Cable + Antenna
+
+2x LS14500 SAFT 3.6V LITHIUM BATTERY ( Parallel Connection )
