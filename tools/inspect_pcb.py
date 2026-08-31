@@ -77,27 +77,31 @@ for t, b in binrecs('Vias6/Data'):
                      lo=b[29], hi=b[30]))
 
 # ---- pads ------------------------------------------------------------
+# Pads6 is NOT framed like the other binary streams. Each record is:
+#     [u8 type][u32 len][Pascal name] [u32 len][blk] x3 [u32 194][body] [u32 0]
+# so the generic [u8 type][u32 len][payload] walker desynchronises on the very
+# first record and returns ZERO pads - which silently skips every footprint,
+# clearance and connectivity check downstream. Locate bodies by scanning for
+# the 0xC2 length marker instead and validate the layer byte.
+#
+# ROTATION MATTERS. The pad outline is stored unrotated; byte 52 of the body
+# holds the rotation as an 8-byte double. Ignoring it swaps width and height on
+# every 90/270-degree pad and invents shorts that are not there.
+PAD_LAYERS = {1, 32, 72, 74} | set(range(2, 32))
 pads = []
-for t, b in binrecs('Pads6/Data'):
-    # pad record: u8 namelen-block then a fixed body; name is length-prefixed
-    if len(b) < 10: continue
-    nl = struct.unpack('<I', b[0:4])[0]
-    name = b[4:4+nl].rstrip(b'\x00').decode('latin-1')
-    p = 4 + nl
-    # three sub-blocks each [u32 len][data]; the main one is the 3rd
-    blocks = []
-    q = p
-    for _ in range(4):
-        if q + 4 > len(b): break
-        ln = struct.unpack('<I', b[q:q+4])[0]; q += 4
-        blocks.append(b[q:q+ln]); q += ln
-    main = None
-    for blk in blocks:
-        if len(blk) >= 100: main = blk; break
-    if main is None: continue
-    pads.append(dict(name=name, layer=main[0], net=u16(main, 3), comp=u16(main, 7),
-                     x=i32(main, 13), y=i32(main, 17),
-                     xs=i32(main, 21), ys=i32(main, 25), hole=i32(main, 45)))
+_d = stream('Pads6/Data'); _pos = 0
+while True:
+    _k = _d.find(b'\xc2\x00\x00\x00', _pos)
+    if _k < 0: break
+    _pos = _k + 4
+    b = _d[_k+4:_k+4+194]
+    if len(b) < 194: break
+    if b[0] not in PAD_LAYERS: continue
+    rot = struct.unpack('<d', b[52:60])[0]
+    xs, ys = i32(b, 21), i32(b, 25)
+    if rot in (90.0, 270.0): xs, ys = ys, xs
+    pads.append(dict(layer=b[0], net=u16(b, 3), comp=u16(b, 7), rot=rot,
+                     x=i32(b, 13), y=i32(b, 17), xs=xs, ys=ys, hole=i32(b, 45)))
 
 # ---- polygons --------------------------------------------------------
 polys = textrecs('Polygons6/Data')
