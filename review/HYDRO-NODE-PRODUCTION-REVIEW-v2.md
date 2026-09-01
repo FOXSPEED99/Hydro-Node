@@ -3,6 +3,13 @@
 Reviewer: independent hardware review
 Date: 2026-09-01
 Scope: full repository at commit `5f529a0`
+> **Scope correction (issue 3).** This repository is a working share created so the design files
+> could be read, not a release. The absence of Gerbers, drill files, an OutJob, a DRC report, a
+> project file and the schematic/PCB libraries is therefore **not a finding** — the export has been
+> deliberately held pending this review. **HN-08 and HN-48 are withdrawn on that basis.** The
+> question this review actually answers is narrower and more useful: *is the PCB ready to export?*
+> See `WORKLIST.md` for that answer, item by item.
+
 Revision 2 of this review, 2026-09-01 — issued after designer feedback. Two findings were
 corrected against vendor data: **HN-01 is downgraded to MAJOR** (the crossed harness is a
 deliberate, colour-driven build convention) and **HN-02 is withdrawn** (the RCWL-1670's standby
