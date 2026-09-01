@@ -3,6 +3,12 @@
 Reviewer: independent hardware review
 Date: 2026-09-01
 Scope: full repository at commit `5f529a0`
+Revision 2 of this review, 2026-09-01 — issued after designer feedback. Two findings were
+corrected against vendor data: **HN-01 is downgraded to MAJOR** (the crossed harness is a
+deliberate, colour-driven build convention) and **HN-02 is withdrawn** (the RCWL-1670's standby
+current is 1.5 µA @ 3.3 V, not the milliamp figure originally assumed). The power verdict changes
+materially as a result — see §6.
+
 Source of truth: the Altium files in this repository. Every finding below cites a
 designator, net, pad coordinate, layer, rule or file path extracted programmatically
 from `Hydro_Node_Schematic.SchDoc` and `Hydro_Node_PCB.PcbDoc`, not read off a render.
@@ -11,36 +17,64 @@ from `Hydro_Node_Schematic.SchDoc` and `Hydro_Node_PCB.PcbDoc`, not read off a r
 
 ## 1. Executive summary
 
-**Verdict: NO-GO.**
+**Verdict: NO-GO for manufacturing. Conditional GO for firmware.**
 
 - **NO-GO for manufacturing** — unconditional. There is no manufacturing data set in the
-  repository at all, and nine blocking design defects remain open.
-- **NO-GO for starting firmware today** — conditional. Four decisions (§9, Day-0) change the
-  firmware's power architecture and its sensor driver. Lock those four and firmware can start
-  immediately; the rest of the issue list does not gate it.
+  repository at all, and seven blocking design defects remain open.
+- **Conditional GO for firmware** — start now. Three parameters are still open (band/SF,
+  pulse-support part, Pro Mini vs. on-board ATmega), but none of them blocks writing the sensor
+  drivers, the sleep state machine or the packet format. This is an upgrade from the first issue
+  of this review, and it follows directly from the two corrections below.
 
-Three findings decide this:
+### Corrections against the first issue
 
-1. **The ultrasonic connector J3 still does not match the module it plugs into.** J3 is wired
-   `1=GND, 2=BATT+, 3=Echo→D8, 4=Trig→D6`. The RCWL-1670's own pads, per the photograph in this
-   repository (`Components Images/RCWL-1670.jpg`), read `GND · RX · TX · +5V`. With a
-   straight-through harness, the battery rail lands on the module's trigger input and an MCU
-   output pin becomes the module's supply.
-2. **Whichever way that harness is built, the design fails.** Cross the harness to fix the pin
-   order and the module's `+5V` lands on J3.2, which is hard-wired to `BATT+` with no gating —
-   the ultrasonic is then powered 24/7. The entire average-current ceiling for a 2-year life is
-   **297 µA**. An ungated ultrasonic exceeds it on its own by roughly 7×.
-3. **Nothing in the design supports a Li-SOCl₂ pulse.** C7 (100 µF) supplies **0.4 %** of the
+**HN-01 — downgraded from BLOCKER to MAJOR.** The original finding assumed a straight-through
+1:1 harness between J3 and the RCWL-1670. The designer has confirmed the harness is deliberately
+crossed and wired by conductor colour (red → +5V, black → GND), which is a valid resolution: the
+connection is electrically correct and the build convention is intentional. What survives is a
+documentation finding, not a functional one — the harness is not a controlled part anywhere in the
+repository, and a correctly-coloured but straight-wired cable will look right and be wrong. See
+HN-01 for the residual, and for a cheaper alternative that removes the crossing entirely.
+
+**HN-02 — withdrawn.** The original finding rested on an estimate of ~2 mA continuous standby for
+the RCWL-1670. That estimate was wrong: it was anchored on JSN-SR04T / HC-SR04-class boards, which
+is the wrong reference class. The RCWL-1670 is an RCWL-16xx-family part specified at
+**1.5 µA @ 3.3 V and 3.5 µA @ 5 V standby**, 6 mA working, 3–5 V supply, 50 ms measurement cycle.
+Leaving it permanently powered on `BATT+` costs roughly **2 µA** — a rounding error against a
+297 µA ceiling. There is no reason to gate it, and the arithmetic that follows from the ceiling was
+never the problem; the input to it was.
+
+### What still decides the verdict
+
+1. **Nothing in the design supports a Li-SOCl₂ pulse.** C7 (100 µF) supplies **0.4 %** of the
    charge in one LoRa TX burst. Holding the rail within 0.3 V across a 62 ms SF7 burst needs
-   ≈ 25,000 µF, or — correctly — a hybrid-layer capacitor or supercapacitor. There is neither,
-   and no depassivation strategy for cells that will sit at ~10 µA for weeks between transmissions.
+   ≈ 25,000 µF, or — correctly — a hybrid-layer capacitor. There is neither, and no depassivation
+   strategy for cells that will sit at ~14 µA for weeks between transmissions.
+2. **Two LS14500 primary lithium cells are hard-paralleled** through a single 2-pin `BATT1`, with
+   no per-cell blocking diode and no fuse. A stronger cell charges a weaker one, and Li-SOCl₂ must
+   never be charged. This is a safety and certification blocker, not an engineering preference.
+3. **The board as drawn cannot be built.** U3's footprint is 2.54 mm pitch on 25.4 mm rows — that
+   is not the Ra-02, and no adapter appears in the BOM. The layer stack is Altium's untouched
+   12.6 mil default, giving a 0.39 mm board. And there is no Gerber, drill, OutJob, DRC report,
+   assembly drawing or MPN-level BOM anywhere in the repository.
 
-**The architecture is sound and the 2-year target is reachable.** With the ultrasonic gated, the
-always-on logic changed to a µA-class part, the aluminium electrolytics replaced with ceramics,
-and firmware written to an explicit energy budget, this design projects to **~6 years** (§6). The
-concept is not the problem; four or five specific component and wiring decisions are.
+### The power verdict, corrected
 
-**Credit where due.** This is revision 2. A prior review (`HYDRO-NODE-HARDWARE-ISSUES.md`,
+**With the RCWL-1670's real standby figure, the two-year target is met — but only with
+energy-aware firmware, and at temperature it is met with essentially zero margin.**
+
+| Scenario | Average | Life | |
+|---|---:|---:|---|
+| Energy-aware firmware, 25 °C | 69 µA | **5.7 years** | PASS |
+| Energy-aware firmware, hot (60–85 °C) | 196 µA | **2.02 years** | PASS, no margin |
+| Naive Arduino firmware, hot | 391 µA | 1.01 years | **FAIL** |
+| Energy-aware + 74AUP1G74 + MLCC bulk, hot | 86 µA | **4.6 years** | PASS with margin |
+
+The single dominant term is now **U2**. At its 85 °C limit the 74HC74 draws 80 µA — **57 % of the
+hot sleep budget**, more than everything else on the board combined. HN-10 and HN-12 are what buy
+the margin back, and they are the cheapest fixes on the list.
+
+**Credit where due.** This is design revision 2. A prior review (`HYDRO-NODE-HARDWARE-ISSUES.md`,
 40 issues, dated 2026-08-19, recoverable from commit `890c7df` but deleted at HEAD) drove real
 fixes that I independently verified as landed: the ground pours, the Ra-02's four ground pins,
 Echo moved onto D8/ICP1, the reed switch moved to the board edge, per-line series resistors,
@@ -133,15 +167,14 @@ signals that make the FTDI header useful.
 The topology — a reed-toggled flip-flop driving a load switch, with a software-off path — is
 correct and I traced it in full (§8). Three things break it.
 
-**The ultrasonic is not switched.** `J3.2` sits directly on `BATT+`. It is gated only by the
-*master* switch (Q1 opens the whole board's ground), not by the 2-minute duty cycle. Between
-samples the MCU sleeps and the SX1278 sleeps, but the RCWL-1670 stays powered. It has no
-documented sleep mode; modules in this class measure 2–8 mA continuously. The 2-year ceiling is
-297 µA total. **Any** continuous ultrasonic draw above roughly 150 µA breaks the target — the
-conclusion does not depend on knowing the module's exact figure.
+**The ultrasonic is not switched — and does not need to be.** `J3.2` sits directly on `BATT+`,
+so between samples the RCWL-1670 stays powered while the MCU and the SX1278 sleep. At the module's
+specified standby of 1.5 µA @ 3.3 V / 3.5 µA @ 5 V, that costs roughly **2 µA at 3.6 V**. Against a
+297 µA ceiling this is negligible and gating it would save nothing. The original blocker here was
+based on a wrong assumption about the part and is withdrawn.
 
-By contrast the DS18B20 *is* pin-powered from D3 and properly gated. The inconsistency is the
-tell: J3 was drawn with a supply pin instead of a gate pin.
+One small consequence is worth recording: because the module is never power-cycled independently,
+firmware has no way to recover it if it latches up. That is a recommendation (HN-49), not a defect.
 
 **Low-side switching leaves the loads half-connected when "off".** With Q1 open, the ATmega and
 the SX1278 keep `VCC` on `BATT+` while their ground floats up to meet it. That is an
@@ -274,8 +307,10 @@ removing the power LED; it does not mention this one.
 - **S1 is a bare glass reed**, 4 × 29 mm, on a 35 mm unsupported lead span, 3.75 mm from a board
   edge, going onto a roof.
 - **The RCWL-1670 is an uncoated PCB** (`Components Images/RCWL-1670.jpg`) with its transducers
-  soldered on, and its silkscreen says **+5V**. The design runs it at 3.6 V, and the brief puts it
-  in a tank headspace that will condense.
+  soldered on, going into a tank headspace that will condense. The **supply voltage is fine** —
+  the module is specified 3–5 V, so 3.6 V is comfortably in range and the `+5V` on the silkscreen
+  is a pad label, not a requirement. Its 2 cm blind zone and 4 m range also suit a rooftop tank
+  well. The open risk is corrosion on an uncoated board in a condensing headspace, not the rail.
 
 ### 4.7 Test, service and telemetry
 
@@ -311,7 +346,7 @@ part is described in a way that permits a purchaser to buy the wrong thing.
 | `1x IRLZ44N N-Channel MOSFET` | 47 A TO-220 switching ~130 mA; V_GS(th) up to 2.0 V and R_DS(on) not characterised at 3.3 V gate drive (HN-22). |
 | `1x Buzzer` | LS1 is `CPT-1255C-090`, an externally-driven transducer rated 80 dB **at 20 V p-p** (HN-26). |
 | `2x B2B-XH-A JST Connector` | Battery and flow use the same 2-pin XH — interchangeable (HN-16). |
-| `1x RCWL-1670 Waterproof Ultrasonic` | 5 V module run at 3.6 V; uncoated PCB in a condensing headspace; no sleep mode (HN-02, HN-24). |
+| `1x RCWL-1670 Waterproof Ultrasonic` | Electrically well matched: 3–5 V supply, 6 mA working, 1.5 µA standby, 2 cm–4 m, 50 ms cycle. The open risk is an uncoated PCB in a condensing headspace (HN-24). |
 | `1x Water Flow switch` | Photo shows a WY-90 rated DC 12–24 V, operated dry at 3.6 µA (HN-25). |
 | `2x LS14500 … ( Parallel Connection )` | Hard-paralleled primary lithium cells, no blocking diodes, no fuse (HN-04). |
 | `1x IPEX to SMA Cable + Antenna` | No part, no band, no gain, no VSWR (HN-07). |
@@ -345,13 +380,19 @@ Every number below is measured against the 297 µA ceiling, which is generous to
 | C9 10 µF/50 V | 1 µA | 8 µA |
 | U2 input leakage through R12 / R14 | <1 µA | 2 µA |
 | R6 1 MΩ pull-up (only while the tank is filling) | 0 | 3.6 µA |
-| **Subtotal — ultrasonic excluded** | **~11 µA** | **~130 µA** |
-| **RCWL-1670, permanently on `BATT+`** | **~2,000 µA** | **~2,500 µA** |
+| RCWL-1670 standby on `BATT+`, interpolated to 3.6 V | 2 µA | 6 µA |
+| **Total sleep current** | **~14 µA** | **~141 µA** |
 
-The 74HC74 line deserves attention on its own. At 80 µA (the family's 85 °C limit) a single
-always-on logic IC consumes **27 % of the entire average-current ceiling**. The revision-1 design
-used a CD4013B, specified at 1 µA max at 25 °C. **The CD4013B → 74HC74 substitution was a power
-regression.** A 74AUP1G74 (0.9 µA max) removes the line item entirely.
+The RCWL-1670 line is the corrected one. Vendor specification is **1.5 µA @ 3.3 V, 3.5 µA @ 5 V**;
+interpolated to 3.6 V that is ~1.9 µA, and the hot figure is not specified by the vendor, so 6 µA
+is a conservative CMOS-leakage allowance. Leaving the module permanently powered is fine.
+
+With the ultrasonic corrected, **U2 is now the dominant sleep term by a wide margin**. At 80 µA
+— the family's 85 °C limit — a single always-on logic IC is **57 % of the hot sleep budget**, more
+than everything else on the board combined, and 27 % of the entire average-current ceiling. The
+revision-1 design used a CD4013B, specified at 1 µA max at 25 °C. **The CD4013B → 74HC74
+substitution was a power regression.** A 74AUP1G74 (0.9 µA max) removes the line item entirely and
+is the single cheapest improvement available to this design.
 
 ### 6.3 Active energy per 2-minute cycle
 
@@ -362,7 +403,7 @@ SF7/BW125/CR4-5, 16-byte payload (~62 ms airtime), +17 dBm (90 mA).
 |---|---:|
 | Wake / setup, 20 ms @ 4.0 mA | 0.08 mAs |
 | DS18B20 power-on + conversion, 100 ms | 0.25 mAs |
-| Ultrasonic measurement window, 40 ms @ 8 mA | 0.32 mAs |
+| Ultrasonic measurement, 50 ms cycle @ 6 mA (vendor figures) | 0.30 mAs |
 | Ra-02 wake + config + FIFO, 15 ms | 0.08 mAs |
 | **TX, 62 ms @ 94 mA** | **5.83 mAs** |
 | Shutdown, 10 ms | 0.04 mAs |
@@ -380,14 +421,24 @@ decision is made.**
 
 | Scenario | Average | Life (3.47 Ah derated) | Verdict |
 |---|---:|---:|---|
-| **As drawn**, harness corrected so the ultrasonic is powered, Case A firmware | 2,066 µA | **70 days** | **FAIL — 10.5×** |
-| As drawn, most generous possible ultrasonic (1 mA), no derating at all | 1,066 µA | 203 days | **FAIL — 3.6×** |
-| Ultrasonic gated, 74HC74 kept, electrolytics kept, Case B firmware, hot | 380 µA | 1.04 years | **FAIL — 1.9×** |
-| **Ultrasonic gated + 74AUP1G74 + MLCC bulk + Case A firmware** | **66 µA** | **6.0 years** | **PASS** |
-| …same, worst-case hot | 105 µA | 3.8 years | **PASS** |
+| **As drawn**, Case A energy-aware firmware, 25 °C | 69 µA | **5.7 years** | **PASS** |
+| **As drawn**, Case A firmware, hot (60–85 °C) | 196 µA | **2.02 years** | **PASS — zero margin** |
+| As drawn, Case B naive firmware, hot | 391 µA | 1.01 years | **FAIL — 2.0×** |
+| As drawn, Case B naive firmware, 25 °C | 264 µA | 1.50 years | **FAIL — 1.3×** |
+| **+ 74AUP1G74 + MLCC bulk, Case A firmware, hot** | **86 µA** | **4.6 years** | **PASS with margin** |
 
-**The target is achievable. The design as drawn misses it by an order of magnitude, and the whole
-gap is one ungated connector pin plus one logic-family choice.**
+Two conclusions follow, and they are different from the first issue of this review.
+
+**The architecture meets the target.** With the corrected ultrasonic figure the design closes at
+5.7 years typical, and it is firmware — not hardware — that decides whether it stays there. SF7 →
+SF9 alone moves the transmit contribution from 49 µA to 207 µA, and a 12-bit DS18B20 conversion
+inside `delay()` costs more than the entire sleep budget. HN-45 (the firmware energy contract) is
+therefore promoted from a nice-to-have to the load-bearing requirement.
+
+**At temperature there is no margin.** 2.02 years against a 2-year minimum is not a pass anyone
+should ship. Two component changes — U2 to a 74AUP1G74 (HN-10) and the three electrolytics to MLCC
+(HN-12) — remove 110 µA of hot sleep current and take the hot case to 4.6 years. Both are cheaper
+than any other item on the issue list.
 
 ### 6.5 Li-SOCl₂ pulse behaviour — a separate FAIL
 
@@ -396,7 +447,7 @@ Peak load: Ra-02 at +20 dBm (120 mA) + MCU (4 mA) + ultrasonic (8 mA) ≈ **132 
 Per-cell limits are 50 mA continuous and ~100 mA pulse; two cells in parallel nominally cover
 132 mA at +20 °C on a **depassivated** cell. That is the only condition under which this works.
 
-- **Passivation.** After weeks at ~10 µA the LiCl film raises cell impedance into the tens of ohms.
+- **Passivation.** After weeks at ~14 µA the LiCl film raises cell impedance into the tens of ohms.
   A 20 Ω passivated source at 132 mA drops **2.6 V**. Even a mild 5 Ω costs 0.65 V, taking a
   3.6 V rail to 2.95 V — and the ATmega328P requires **≥ 2.7 V to run at 8 MHz**. Add the
   impedance rise at 0 °C and the first transmission after a quiet period lands below the part's
@@ -415,16 +466,90 @@ which also disposes of HN-04.
 **No depassivation strategy exists.** Firmware should draw a defined depassivation load on a
 schedule, and the design should give it a way to measure the result (HN-19).
 
+### 6.6 HN-03 explained, and how to close it
+
+**What passivation is.** Li-SOCl₂ cells get their energy density and 20-year shelf life from a
+chemical trick: a thin insulating film of lithium chloride grows on the lithium anode. That film is
+what stops the cell self-discharging. It is a feature, not a defect.
+
+**What it costs you.** The film also has resistance, and it thickens the longer the cell sits at low
+current — which is exactly what your node does for 119.9 s out of every 120 s, and for months if the
+reed switch is off. A fresh, exercised LS14500 has roughly 1–2 Ω of internal impedance. One that has
+been idling at ~14 µA for a month can be 10–50 Ω.
+
+**Then Ohm's law does the rest.** The LoRa burst pulls ~130 mA:
+
+| Cell state | Impedance (2 cells in parallel) | Drop at 130 mA | Rail |
+|---|---:|---:|---|
+| Fresh / exercised | ~1 Ω | 0.13 V | 3.47 V — fine |
+| Mildly passivated | ~5 Ω | 0.65 V | 2.95 V — marginal |
+| Passivated after a month idle | ~10 Ω | 1.30 V | **2.30 V — below the ATmega's 2.7 V floor at 8 MHz** |
+| Same, at −5 °C | ~25 Ω | 3.25 V | **rail collapses** |
+
+**Why this is the nastiest class of bug.** It passes on your bench every time, because the cell you
+are testing with was used recently and is depassivated. It fails in the field, after the node has
+been quiet — and because BOD must be disabled to hit the sleep budget, the MCU does not reset
+cleanly. It executes at 2 V, which is how EEPROM gets corrupted.
+
+**Why C7 cannot fix it.** The intuition that "a big capacitor covers the pulse" does not survive the
+arithmetic:
+
+- Charge one transmission needs: 130 mA × 62 ms = **8.1 mC**
+- Charge C7 can give up for a 0.3 V sag: 100 µF × 0.3 V = **0.03 mC**
+- C7 therefore covers **0.4 %** of the burst, and holds the load for 0.25 ms out of 62 ms
+- To actually hold ΔV ≤ 0.3 V you would need ≈ **27,000 µF** — not a part that belongs on this board
+
+**The battery supplies the pulse. A capacitor only rounds off the leading edge.**
+
+#### Three ways to close it
+
+**Option A — hybrid layer capacitor (HLC). The industry standard answer, and my recommendation.**
+An HLC (Tadiran TLI-1550A or equivalent) is a low-impedance rechargeable lithium cell in an AA-sized
+can. Wire it: `LS14500 → series Schottky → HLC in parallel → load`. The primary cell trickle-charges
+the HLC at microamps between transmissions; the HLC delivers the 130 mA burst from an impedance of
+well under an ohm. **This closes HN-04 at the same time** — with an HLC you need only *one*
+LS14500, so the two-cells-in-parallel safety problem disappears entirely. Check the HLC's cycle
+rating against your 525,600 cycles over two years before committing.
+
+**Option B — supercapacitor plus a current limiter.** A 0.1–0.5 F supercap across the rail, charged
+through a series resistor sized so the cell never sees more than ~15 mA. For 0.22 F and 220 Ω the
+recharge time constant is ~48 s, which fits inside a 120 s cycle. Cheaper and easier to source than
+an HLC, but supercap leakage is 5–50 µA and would eat a large part of the 14 µA sleep budget you
+have — so pick a low-leakage part and *measure* it.
+
+**Option C — manage it in firmware, change no hardware.** Have firmware draw a defined depassivation
+load on a schedule. Your 2-minute cycle may in fact keep the cell exercised in steady state; the
+exposures are the *first* transmission after shipping or storage, and the first after any long
+reed-switch power-off. This is free and it may genuinely be sufficient — but it must be measured,
+not assumed, and it does not cover a node that sat switched off for a month.
+
+#### The test that tells you which option you need
+
+Do this before choosing. It is one afternoon and it settles the question.
+
+1. Take an LS14500 that has been idle at sleep current — or simply on a shelf — for **at least two
+   to four weeks**. This is the whole point; a freshly-used cell will pass and tell you nothing.
+2. Scope across the battery terminals, DC-coupled, 500 mV/div, 20 ms/div, single-shot trigger.
+3. Fire one LoRa transmission at full power and capture the dip.
+4. Repeat at **−5 °C and +50 °C** — impedance roughly triples at the cold end.
+
+| Minimum rail during the burst | What it means |
+|---|---|
+| **above ~3.0 V** | Option C. Document the result and move on. |
+| **2.7–3.0 V** | Option B. Add the supercapacitor. |
+| **below 2.7 V** | Option A. You need the HLC — and you can drop to one cell. |
+
+Add the battery-sense divider from HN-44 while you are at it, so the shipped product can report this
+number to the Hub instead of you having to guess at it two years from now.
+
 ---
 
 ## 7. Tagged issue list
 
-### BLOCKER
+### BLOCKER (7)
 
 | ID | Finding | Reference |
 |---|---|---|
-| **HN-01** | J3 pin order does not match the RCWL-1670. J3 is `1=GND, 2=BATT+, 3→D8, 4→D6`; the module's pads read `GND · RX · TX · +5V`. With a 1:1 harness, `BATT+` drives the module's trigger input and D6 becomes its supply. | `J3`, nets `BATT+`/`NetJ3_3`/`NetJ3_4`; `Components Images/RCWL-1670.jpg` |
-| **HN-02** | `J3.2` is hard-wired to `BATT+` with no power gating. Correct the harness and the ultrasonic runs 24/7 — on its own that exceeds the entire 297 µA average-current ceiling by ~7×. | net `BATT+` members; §6 |
 | **HN-03** | No Li-SOCl₂ pulse support and no depassivation strategy. C7 supplies 0.4 % of a TX burst; ~25,000 µF or an HLC/supercap is required. Rail can collapse below the ATmega's 2.7 V @ 8 MHz limit with BOD disabled. | `C7`, `BATT1`; §6.5 |
 | **HN-04** | Two LS14500 primary lithium cells hard-paralleled through a single 2-pin `BATT1` — no per-cell blocking diode, no fuse or PTC. A stronger cell charges a weaker one; Li-SOCl₂ must never be charged. Safety and certification blocker. | `BATT1` (2 pads only); `Components-List.txt` |
 | **HN-05** | U3 footprint `RA-02_BREAKOUT_THT_2X8` is 2.54 mm pitch with 25.4 mm row spacing (pads at X = 2748.0 / 3748.0 mil). The Ra-02 is SMD-16, 2.0 mm pitch, ~17 mm rows. No adapter board in the BOM. | `U3`; Components6 `PATTERN` |
@@ -433,7 +558,11 @@ schedule, and the design should give it a way to measure the result (HN-19).
 | **HN-08** | No manufacturing data set: no Gerbers, drill, ODB++, OutJob, assembly drawing, pick-and-place, DRC report or `.PrjPcb`; no MPN-level BOM; and the referenced `.SchLib`/`.PcbLib` files are absent, so the design cannot be rebuilt by anyone else. | repository-wide |
 | **HN-09** | Layer stack left at Altium's default 12.6 mil dielectric → **0.39 mm** finished board, carrying a TO-220, DIP-14, three 11 mm radial cans, four JST connectors and two modules. | `Board6`, `LAYER_V8_4DIELHEIGHT=12.6mil` |
 
-### MAJOR
+### MAJOR (21)
+
+| ID | Finding | Reference |
+|---|---|---|
+| **HN-01** | The J3 → RCWL-1670 harness is deliberately crossed and wired by conductor colour, which is electrically correct — but it is not a controlled part anywhere in the repository. A straight-wired cable with correct colours looks right at incoming inspection and is wrong. Add a wire-list drawing and put the four signal names on the silkscreen beside J3. **Cheaper alternative:** reorder J3 to `1=GND, 2=Trig, 3=Echo, 4=VCC` to match the module. A straight-through cable then gives black on GND *and* red on +5V with no crossing at all — both goals, one net swap in the respin. | `J3`, nets `BATT+`/`NetJ3_3`/`NetJ3_4` |
 
 | ID | Finding | Reference |
 |---|---|---|
@@ -451,14 +580,14 @@ schedule, and the design should give it a way to measure the result (HN-19).
 | HN-21 | `WCAP-ATLL_D5H11` footprint origin is ~1.27 m off-board for C7/C8/C9, breaking bounding boxes, courtyards, 3D bodies, inside/outside-board DRC and centroid export. | `C7` (−46535.4, −48799.2) mil etc. |
 | HN-22 | IRLZ44N: a 47 A TO-220 switching ~130 mA. V_GS(th) up to 2.0 V, R_DS(on) not characterised at 3.3 V drive, and a needlessly large package. A small SOT-23 logic-level FET or a load-switch IC is correct. | `Q1` |
 | HN-23 | Low-side switching leaves `VCC` applied to the ATmega and SX1278 with their ground floating — an uncharacterised bias state. Move to a high-side switch. | `Q1`, nets `GND`/`BATT-` |
-| HN-24 | RCWL-1670 is a **+5V**-labelled, uncoated module run at 3.6 V and pointed into a condensing tank headspace. Range and long-term reliability both unqualified. | `Components Images/RCWL-1670.jpg` |
+| HN-24 | RCWL-1670 is an uncoated PCB with its transducers soldered on, pointed into a condensing tank headspace. Corrosion and dendrite growth on an uncoated board in condensing conditions is a matter of months. *(The supply-voltage concern in the first issue is withdrawn — the module is specified 3–5 V, so 3.6 V is in range.)* | `Components Images/RCWL-1670.jpg` |
 | HN-25 | WY-90 flow switch is rated DC 12–24 V and is being operated dry at 3.6 µA (R6 = 1 MΩ) — far below any wetting current the vendor qualifies. | `J1`, `R6`; `Components Images/Flow-Switch.png` |
 | HN-26 | LS1 (`CPT-1255C-090`) is an externally-driven piezo transducer rated 80 dB **at 20 V p-p**. At 3.3 V p-p expect roughly 64 dB, and firmware must generate the tone — a static level produces silence. | `LS1`, `R9`, `U1.D7` |
 | HN-27 | DS18B20 is pin-powered from D3 down ~1 m of cable with **no bypass capacitor** at the sensor. Maxim requires a local 100 nF. | `J2.3`, net `NetJ2_3` |
 | HN-28 | Silkscreen legends outside the board outline (C4's "100nF" at X = 4496.2 mil vs a 4153.5 edge; "3.6v" at 4155.7; C5's "100nF" at Y = 3460.0 vs a 3366.1 edge) and several values 20–40 mm from their part. | Texts6, layers 33/34 |
 | HN-29 | All-through-hole with parts on **both** sides (C4, C7, C8, C9, LS1, BATT1 bottom). Two hand-solder operations; no wave or selective path. | Components6 `LAYER` |
 
-### MINOR
+### MINOR (11)
 
 | ID | Finding |
 |---|---|
@@ -474,7 +603,7 @@ schedule, and the design should give it a way to measure the result (HN-19).
 | HN-39 | S1 is a bare glass reed with a 35 mm unsupported lead span, 3.75 mm from the board edge, on a roof. Specify a plastic-encapsulated part or add strain relief. |
 | HN-40 | No revision, date or board identifier on the silkscreen. |
 
-### RECOMMENDATION
+### RECOMMENDATION (7)
 
 | ID | Recommendation |
 |---|---|
@@ -484,8 +613,15 @@ schedule, and the design should give it a way to measure the result (HN-19).
 | HN-44 | Add a battery-sense divider (high value, gated by a GPIO so it costs nothing in sleep) so firmware can report loaded rail voltage during TX — the only meaningful Li-SOCl₂ health signal. |
 | HN-45 | Write the firmware against an explicit **energy contract**: ≤ 6.6 mAs per cycle, ≤ 62 ms airtime, DS18B20 at 9-bit, MCU idle-sleep during conversions, all unused pins configured, BOD off, and SCK driven low before sleep. |
 | HN-46 | Give the battery a distinct connector family (JST-PH or a locking 2-pin) so it can never be swapped with J1. |
-| HN-47 | If the ultrasonic must stay a 5 V module, decide now whether to boost locally or accept reduced range at 3.6 V — and characterise the range at the actual tank depth before committing. |
+| HN-49 | The ultrasonic can never be power-cycled independently, so firmware cannot recover it from a latch-up. If field experience shows the module hanging, a gate pin becomes worth adding — not for power, but for recovery. |
 | HN-48 | Restore `HYDRO-NODE-HARDWARE-ISSUES.md` (or a successor) to the repository. Deleting the issue tracker loses the design rationale for revision 2's changes. |
+
+### WITHDRAWN
+
+| ID | Finding | Why |
+|---|---|---|
+| ~~HN-02~~ | *“The ultrasonic supply is not gated.”* | The RCWL-1670 is specified at 1.5 µA @ 3.3 V standby, so leaving it on `BATT+` costs ~2 µA. The original ~2 mA estimate was anchored on the wrong module class. No gating is needed. |
+| ~~HN-47~~ | *“Settle the ultrasonic's supply voltage; consider boosting to 5 V.”* | The module is specified 3–5 V. 3.6 V is in range; the `+5V` silkscreen is a pad label. Superseded by HN-49. |
 
 ---
 
@@ -532,11 +668,13 @@ Answers to these change the design, so they are listed rather than guessed.
 
 1. **Deployment country / region?** Sets the band, the legal ERP, the SF, and therefore the power
    budget. Blocks HN-07 and §6.3.
-2. **How is the existing ultrasonic harness actually wired?** If it was hand-crossed to work
-   around HN-01, the board may run today while the schematic stays wrong — and HN-02 then applies
-   in full.
-3. **What is the measured idle current of your RCWL-1670 at 3.6 V?** The verdict does not depend
-   on it (anything above ~150 µA fails), but the fix's urgency does.
+2. ~~How is the ultrasonic harness wired?~~ **Answered.** Deliberately crossed, by conductor
+   colour. The remaining question is whether that convention gets written down as a controlled
+   drawing before anyone else builds one (HN-01).
+3. ~~What is the RCWL-1670's idle current?~~ **Answered.** Vendor specification: 1.5 µA @ 3.3 V,
+   3.5 µA @ 5 V standby; 6 mA working; 3–5 V supply; 50 ms measurement cycle; 2 cm–4 m range.
+   Worth one bench measurement at 3.6 V and 60 °C to confirm, since the hot figure is unspecified —
+   but nothing in the verdict now turns on it.
 4. **Is a breakout/adapter board intended under the Ra-02**, or is the U3 footprint simply wrong?
 5. **Has the Pro Mini rework been done, and on what variant?** Clone Pro Minis differ in regulator,
    LED resistor and fuse settings between batches — this is why HN-06 recommends moving the
@@ -555,24 +693,30 @@ Answers to these change the design, so they are listed rather than guessed.
 
 ## 10. Next steps
 
-### Day 0 — the four decisions that unblock firmware
+### Day 0 — firmware can start; three parameters stay open
 
-1. Decide the **band and region**, and fix the maximum SF (Q1, HN-07).
-2. Decide the **ultrasonic wiring and gating**: correct J3's pin order **and** move its supply onto
-   a GPIO-controlled gate (HN-01, HN-02). Firmware needs to know whether it owns a sensor-power pin.
-3. Decide the **pulse-support part** — HLC or supercapacitor, and therefore one cell or two
-   (HN-03, HN-04). This determines whether firmware must run a depassivation routine.
-4. Decide whether the **Pro Mini stays** or the ATmega moves onto the carrier (HN-06). This
-   determines the fuse settings, the sleep floor, and whether D13 can be used as SCK.
+Firmware is unblocked. The sensor drivers, sleep state machine and packet format can all be written
+now. Three parameters need answers before the firmware is finished, none before it is started:
 
-With those four locked, firmware development can start against a stable contract, in parallel with
-the board respin.
+1. **Band and region**, which fixes the maximum SF (Q1, HN-07). Sets the transmit energy term,
+   which is two-thirds of the active budget.
+2. **The pulse-support part** — HLC or supercapacitor, and therefore one cell or two (HN-03,
+   HN-04). Determines whether firmware must run a depassivation routine.
+3. **Pro Mini or on-board ATmega** (HN-06). Determines the fuse settings, the sleep floor, and
+   whether D13 can be used as SCK.
+
+**Write the energy contract first (HN-45).** With the hardware as drawn, energy-aware firmware
+gives 5.7 years and naive firmware gives 1.5 — firmware is now the deciding variable, not the
+board. Budget ≤ 6.6 mAs per cycle, ≤ 62 ms airtime, DS18B20 at 9-bit, MCU idle-sleep during
+conversions, all unused pins configured, BOD off, SCK driven low before sleep.
 
 ### Before the respin
 
 - Fix the layer stack to 1.6 mm (HN-09) and set net-class width rules (HN-34).
-- Replace: all nine caps with X7R (HN-11); C7/C8/C9 with MLCC (HN-12); U2 with a 74AUP1G74
-  (HN-10); Q1 with a small logic-level FET or load switch, moved high-side (HN-22, HN-23, HN-41).
+- **Replace U2 with a 74AUP1G74 and C7/C8/C9 with MLCC first** — those two changes alone remove
+  110 µA of hot sleep current and move the hot-case life from 2.02 to 4.6 years (HN-10, HN-12).
+- Replace: all nine caps with X7R (HN-11); Q1 with a small logic-level FET or load switch, moved
+  high-side (HN-22, HN-23, HN-41).
 - Add: reverse-polarity protection (HN-15), a battery fuse/PTC (HN-04), TVS on all three cable
   interfaces (HN-17), a local 100 nF at the DS18B20 (HN-27), a programming header and test points
   (HN-18, HN-43), a battery-sense divider (HN-19, HN-44).
@@ -595,7 +739,10 @@ the board respin.
 - Measure sleep current on a built board against the §6.2 table, line by line.
 - Verify the reed pull-in distance through the production enclosure wall with the production
   magnet, and specify a minimum magnet grade.
-- Range-test the ultrasonic at 3.6 V at the real tank depth before committing (HN-24, HN-47).
+- Range-test the ultrasonic at the real tank depth, and confirm its standby current at 3.6 V and
+  60 °C — the only unverified term left in the sleep budget (HN-24, Q3).
+- Produce a controlled harness drawing for the crossed J3 cable before anyone else builds one
+  (HN-01).
 
 ---
 
