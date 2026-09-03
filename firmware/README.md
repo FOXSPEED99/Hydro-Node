@@ -144,7 +144,7 @@ Everything lives flat in `HydroNode/`, so every file is a tab in the IDE.
 |---|---|
 | `hn_board.*` | Pin map, safe idle states, ADC power, and the two timing hooks Section 3 replaces |
 | `hn_config.h` | Every tunable, each with the reasoning for its value |
-| `hn_ultrasonic.*` | Trigger, echo pulse timing, filtering handoff |
+| `hn_ultrasonic.*` | Trigger, echo pulse timing (input capture or software, per the echo pin), filtering handoff |
 | `hn_temperature.*` | DS18B20 with GPIO power gating; split `start`/`finish` so the conversion can overlap |
 | `hn_onewire.*` | 1-Wire master with a three-valued reset: presence / no-presence / shorted |
 | `hn_flow.*` | Dual-path sampling and the settle-and-retry that keeps an RC transient from being called a fault |
@@ -193,12 +193,24 @@ Three rules worth keeping:
 
 ---
 
-## Before first power-up
+## Bench notes
 
-`docs/HARDWARE.md` §5 lists the five assumptions this firmware makes and how to
-check each one. The two worth doing with a meter in hand:
+`docs/HARDWARE.md` §5 lists the assumptions this firmware makes and how to check
+each one. Two are already settled on the built hardware:
 
-* **Ultrasonic harness continuity.** It is a cross-over cable — the module's
-  pads run GND / TRIG / ECHO / +5 V while `J3` runs GND / VCC / ECHO / TRIG.
-  That is by design, but it is not marked on the board.
+* **Ultrasonic pin order — settled.** `J3.3` → D8 is **TRIG** and `J3.4` → D6 is
+  **ECHO**, confirmed by a plain HC-SR04 sketch measuring correct distances. The
+  firmware matches that. It is the opposite of what the schematic review
+  predicted; §3 of `docs/HARDWARE.md` explains why, and why the harness does not
+  need reworking.
+* **The buzzer stays silent.** `D7` is parked `OUTPUT LOW` in
+  `hn_board_begin()` before anything else touches hardware, and nothing in
+  Section 1 ever drives it. Sound is Section 4.
+
+Still open:
+
 * **Flow switch polarity.** The firmware assumes normally-open, closing on flow.
+  With no switch to hand you can still test the whole path with a jumper — see
+  `docs/HARDWARE.md` §4.3.
+* **The blind zone.** The single most informative measurement left on the
+  ultrasonic; `docs/HARDWARE.md` §5 row 5.

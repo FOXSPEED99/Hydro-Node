@@ -8,8 +8,6 @@
 #include <avr/power.h>
 #include <util/delay.h>
 
-#define HN_US_ECHO_HAS_INPUT_CAPTURE (HN_PIN_US_ECHO == 8)
-
 #if HN_US_ECHO_HAS_INPUT_CAPTURE
 /* Capture state machine, shared with the ISR. */
 #define CAP_WAIT_RISE  0
@@ -135,6 +133,13 @@ static uint8_t take_one_shot(uint16_t &echo_us)
     return (state == CAP_WAIT_FALL) ? SHOT_NO_FALL : SHOT_NO_RISE;
 }
 #else
+/*
+ * Software timing, used when the echo line is not on ICP1 - which is the case
+ * on the as-built harness. micros() resolves 8 us at 8 MHz, and both edges are
+ * detected by the same loop so their detection latencies largely cancel out of
+ * the width. See HN_US_ECHO_HAS_INPUT_CAPTURE in hn_board.h for why the
+ * accuracy and energy cost of doing it this way are both negligible here.
+ */
 static uint8_t take_one_shot(uint16_t &echo_us)
 {
     echo_us = 0;
@@ -147,16 +152,23 @@ static uint8_t take_one_shot(uint16_t &echo_us)
     _delay_us(10);
     digitalWrite(HN_PIN_US_TRIG, LOW);
 
+    /*
+     * ONE deadline measured from the trigger, covering both edges - the same
+     * budget the input-capture path uses. Timing each edge separately would let
+     * a dead sensor burn two full timeouts per sample instead of one, which at
+     * five samples is 400 ms of pointless spinning per cycle rather than 200.
+     */
     const uint32_t timeout_us = (uint32_t)HN_US_ECHO_TIMEOUT_MS * 1000UL;
+    const uint32_t start = micros();
 
-    uint32_t start = micros();
     while (digitalRead(HN_PIN_US_ECHO) == LOW) {
         if ((uint32_t)(micros() - start) >= timeout_us) return SHOT_NO_RISE;
     }
 
-    uint32_t rise = micros();
+    const uint32_t rise = micros();
+
     while (digitalRead(HN_PIN_US_ECHO) == HIGH) {
-        if ((uint32_t)(micros() - rise) >= timeout_us) return SHOT_NO_FALL;
+        if ((uint32_t)(micros() - start) >= timeout_us) return SHOT_NO_FALL;
     }
 
     uint32_t width = micros() - rise;

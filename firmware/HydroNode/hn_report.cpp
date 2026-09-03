@@ -49,7 +49,7 @@ void hn_report_banner()
     Serial.println(F("  ultrasonic TRIG"));
     Serial.print(F("  D")); Serial.print((int)HN_PIN_US_ECHO);
     Serial.print(F("  ultrasonic ECHO"));
-#if HN_PIN_US_ECHO == 8
+#if HN_US_ECHO_HAS_INPUT_CAPTURE
     Serial.print(F("   (PB0/ICP1, input capture)"));
 #else
     Serial.print(F("   (software pulse timing)"));
