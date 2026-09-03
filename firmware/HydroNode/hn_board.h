@@ -46,8 +46,8 @@
  *
  *   J3.1 = switched GND
  *   J3.2 = BATT+                (always on - see the note below)
- *   J3.3 -> R1 100R -> D8       ECHO
- *   J3.4 -> R2 100R -> D6       TRIG
+ *   J3.3 -> R1 100R -> D8       ECHO on the schematic
+ *   J3.4 -> R2 100R -> D6       TRIG on the schematic
  *
  * ECHO is on D8 because D8 is PB0 = ICP1, the ATmega328P's input capture pin.
  * That placement is deliberate - the Stage 0 review raised it as HW-018 against
@@ -56,15 +56,18 @@
  * capture unit accordingly, which also lets the CPU idle-sleep through the
  * flight time instead of spinning in pulseIn().
  *
+ * If a built harness is found swapped, set the two pin macros below to match
+ * the working wiring. ECHO on D8 uses Timer1 input capture; ECHO on any other
+ * digital pin uses the software pulse-width path in hn_ultrasonic.cpp.
+ *
  * The harness is a CROSS-OVER cable: the RCWL-1670's own pads run
  * GND / RX(TRIG) / TX(ECHO) / +5V, so positions 2 and 4 are swapped relative to
  * this connector. That is by design and confirmed, but it is not marked on the
  * board, so check continuity before first power-up. The two 100 ohm series
  * resistors limit a mis-wired harness to ~33 mA of contention rather than
  * letting two push-pull outputs fight at full current. */
-#define HN_PIN_US_TRIG      6
-#define HN_PIN_US_ECHO      8    /* PB0 / ICP1 - do not move without rewriting
-                                  * hn_ultrasonic.cpp to use a different timer */
+#define HN_PIN_US_TRIG      8
+#define HN_PIN_US_ECHO      6
 
 /* Temperature, J2 "Temp" (B3B-XH-A), DS18B20.
  *

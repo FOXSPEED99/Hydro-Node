@@ -8,10 +8,9 @@
 #include <avr/power.h>
 #include <util/delay.h>
 
-#if HN_PIN_US_ECHO != 8
-#error "The echo pin must be D8 (PB0/ICP1): this driver uses Timer1 input capture."
-#endif
+#define HN_US_ECHO_HAS_INPUT_CAPTURE (HN_PIN_US_ECHO == 8)
 
+#if HN_US_ECHO_HAS_INPUT_CAPTURE
 /* Capture state machine, shared with the ISR. */
 #define CAP_WAIT_RISE  0
 #define CAP_WAIT_FALL  1
@@ -45,6 +44,7 @@ static inline uint16_t ticks_to_us(uint16_t ticks)
 {
     return (uint16_t)(((uint32_t)ticks * 8UL) / (F_CPU / 1000000UL));
 }
+#endif
 
 void hn_ultrasonic_begin()
 {
@@ -82,6 +82,7 @@ hn_presence_t hn_ultrasonic_probe_presence()
 #define SHOT_NO_RISE     1   /* module never started a burst                  */
 #define SHOT_NO_FALL     2   /* burst started and never ended - wiring fault  */
 
+#if HN_US_ECHO_HAS_INPUT_CAPTURE
 static uint8_t take_one_shot(uint16_t &echo_us)
 {
     echo_us = 0;
@@ -133,6 +134,36 @@ static uint8_t take_one_shot(uint16_t &echo_us)
     }
     return (state == CAP_WAIT_FALL) ? SHOT_NO_FALL : SHOT_NO_RISE;
 }
+#else
+static uint8_t take_one_shot(uint16_t &echo_us)
+{
+    echo_us = 0;
+
+    digitalWrite(HN_PIN_US_TRIG, LOW);
+    _delay_us(2);
+
+    /* HC-SR04-compatible modules want a >=10 us trigger pulse. */
+    digitalWrite(HN_PIN_US_TRIG, HIGH);
+    _delay_us(10);
+    digitalWrite(HN_PIN_US_TRIG, LOW);
+
+    const uint32_t timeout_us = (uint32_t)HN_US_ECHO_TIMEOUT_MS * 1000UL;
+
+    uint32_t start = micros();
+    while (digitalRead(HN_PIN_US_ECHO) == LOW) {
+        if ((uint32_t)(micros() - start) >= timeout_us) return SHOT_NO_RISE;
+    }
+
+    uint32_t rise = micros();
+    while (digitalRead(HN_PIN_US_ECHO) == HIGH) {
+        if ((uint32_t)(micros() - rise) >= timeout_us) return SHOT_NO_FALL;
+    }
+
+    uint32_t width = micros() - rise;
+    echo_us = (width > 0xFFFFUL) ? 0xFFFFU : (uint16_t)width;
+    return SHOT_OK;
+}
+#endif
 
 void hn_ultrasonic_read(hn_ultrasonic_reading_t &r)
 {
