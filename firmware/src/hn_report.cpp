@@ -44,9 +44,17 @@ void hn_report_banner()
     Serial.println();
     Serial.println(F("Arduino Pro Mini 3.3V / 8MHz (ATmega328P), battery-fed VCC"));
     Serial.println(F("------------------------------------------------------------------"));
-    Serial.println(F("Pin map (from Hydro_Node_Schematic.SchDoc):"));
-    Serial.println(F("  D6  ultrasonic TRIG   J3.4 via R2 100R"));
-    Serial.println(F("  D8  ultrasonic ECHO   J3.3 via R1 100R   (PB0/ICP1, input capture)"));
+    Serial.println(F("Pin map (configured firmware):"));
+    Serial.print(F("  D")); Serial.print((int)HN_PIN_US_TRIG);
+    Serial.println(F("  ultrasonic TRIG"));
+    Serial.print(F("  D")); Serial.print((int)HN_PIN_US_ECHO);
+    Serial.print(F("  ultrasonic ECHO"));
+#if HN_PIN_US_ECHO == 8
+    Serial.print(F("   (PB0/ICP1, input capture)"));
+#else
+    Serial.print(F("   (software pulse timing)"));
+#endif
+    Serial.println();
     Serial.println(F("  D3  DS18B20 power     J2.3, 4k7 pull-up referenced here"));
     Serial.println(F("  D4  DS18B20 data      J2.1 via R4 100R"));
     Serial.println(F("  D5  flow digital      J1.2 via R5 100R   (1M pull-up on board)"));

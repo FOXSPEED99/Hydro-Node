@@ -75,9 +75,11 @@ These are not incidental; each one changes how the corresponding driver works.
 Stage 0 review raised the previous revision's placement as **HW-018** — *"Echo
 is on D7 instead of D8, so hardware input capture is unavailable"* — and
 recommended swapping echo to D8. This board is that fix. The driver therefore
-uses Timer1 input capture rather than `pulseIn()`: the edges are timestamped in
+uses Timer1 input capture when ECHO is on D8: the edges are timestamped in
 hardware with no interrupt-latency jitter, and the CPU can idle-sleep through
-the flight time instead of spinning.
+the flight time instead of spinning. If an as-built harness swaps TRIG and ECHO,
+the firmware can be configured to match it and will use software pulse timing on
+the configured ECHO pin.
 
 **The DS18B20 is powered from a GPIO, with its pull-up referenced to that same
 GPIO.** Driving `D3` low depowers the sensor *and* removes the 4.7 kΩ pull-up's
@@ -159,7 +161,7 @@ to be wrong. None of them should be taken on trust.
 
 | # | Assumption | Why we believe it | How to check | If wrong |
 |---|---|---|---|---|
-| 1 | `J3.3` = ECHO, `J3.4` = TRIG | The ultrasonic harness is a **cross-over cable** — the RCWL-1670's own pads run GND / RX(TRIG) / TX(ECHO) / +5 V, so positions 2 and 4 swap. Confirmed during the Stage 0 review. Independently, ECHO on D8 is only meaningful if D8 is the input. | Continuity from each module pad to its `J3` pin before first power-up. | Swap `HN_PIN_US_TRIG` / `HN_PIN_US_ECHO` in `hn_board.h`. Note the driver needs ECHO on D8 for input capture, so a genuine swap means a harness rework, not a firmware change. |
+| 1 | `J3.3` = ECHO, `J3.4` = TRIG | The ultrasonic harness is a **cross-over cable** — the RCWL-1670's own pads run GND / RX(TRIG) / TX(ECHO) / +5 V, so positions 2 and 4 swap. Confirmed during the Stage 0 review. ECHO on D8 is preferred because it enables input capture. | Continuity from each module pad to its `J3` pin before first power-up, or the known-good basic sketch pin pair. | Swap `HN_PIN_US_TRIG` / `HN_PIN_US_ECHO` in `hn_board.h`. If ECHO is not D8, the driver uses software pulse timing instead of input capture. |
 | 2 | The flow switch is normally-open and **closes** on flow | Standard for an HT-60 class paddle switch. | Blow through the switch and watch `fl.d` in the serial output. | `HN_FLOW_FILLING_IS_LOW` in `hn_config.h`. |
 | 3 | The RCWL-1670 drives ECHO **low** while idle | Normal for HC-SR04-compatible modules; it is what makes the pull-up presence probe work. | Scope the echo line with the module connected and idle. | Only the presence *probe* is affected. A real echo already overrides it, so the reading itself stays correct. |
 | 4 | The DS18B20 measures the air the pulse travels through | It is the temperature that determines the speed of sound. | Note where the probe is physically mounted. | If the probe is in the **water**, the compensation is using a poor proxy for headspace air temperature. The review's HW-023 makes this the dominant error term in the whole measurement — see §6. |

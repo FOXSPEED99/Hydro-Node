@@ -103,7 +103,7 @@ outside what this installation expects.
 |---|---|
 | `hn_board.*` | Pin map, safe idle states, ADC power, and the two timing hooks Section 3 replaces |
 | `hn_config.h` | Every tunable, each with the reasoning for its value |
-| `hn_ultrasonic.*` | Trigger, Timer1 input capture, idle-sleep wait |
+| `hn_ultrasonic.*` | Trigger, echo pulse timing, filtering handoff |
 | `hn_temperature.*` | DS18B20 with GPIO power gating; split `start`/`finish` so the conversion can overlap |
 | `hn_onewire.*` | 1-Wire master with a three-valued reset: presence / no-presence / shorted |
 | `hn_flow.*` | Dual-path sampling and the settle-and-retry that keeps an RC transient from being called a fault |
