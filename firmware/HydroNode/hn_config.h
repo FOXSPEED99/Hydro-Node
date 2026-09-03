@@ -112,16 +112,32 @@
  * 200 us is ~34 mm. */
 #define HN_US_SPREAD_LIMIT_US   200U
 
-/* Installation plausibility window - ADVISORY ONLY. [REV HW-023 v9] pins the
- * real geometry at 0.05-0.15 m to a full water line and 0.70-1.00 m to the tank
- * floor. Converted to round-trip microseconds at ~343 m/s and padded:
- *   0.04 m -> 233 us      1.20 m -> 6997 us
- * A reading outside this is still measured, still reported raw, and still
- * transmitted - it is only flagged, because a full tank inside the module's
- * blind zone [REV HW-051] is exactly the case that must not be silently
- * discarded. Set both to 0 to disable the check. */
-#define HN_US_PLAUSIBLE_MIN_US  230U
-#define HN_US_PLAUSIBLE_MAX_US  7000U
+/* Installation plausibility window - DISABLED BY DEFAULT, and it should stay
+ * that way on this product.
+ *
+ * When non-zero, a stable reading outside this round-trip window is flagged
+ * HN_STATUS_OUT_OF_RANGE. The raw value is still measured and still
+ * transmitted - it is only labelled - but the label itself encodes tank
+ * geometry, and tank geometry is the Hub's business, not the Node's.
+ *
+ * The Hub holds the blind zone, the tank height, the transducer standoff and
+ * the volume curve, and it can be updated over Wi-Fi. A Node that flagged
+ * readings against a window compiled into it would start crying OUT_OF_RANGE
+ * the moment it was fitted to a taller tank - reporting a fault that is really
+ * just a different installation, from the one place in the system that cannot
+ * be corrected without a site visit.
+ *
+ * So both are 0 and the check compiles away. The only limits the Node still
+ * enforces are HN_US_ECHO_MIN_US / MAX_US above, and those are different in
+ * kind: they are the sensor's own physical range, not an assumption about
+ * where the sensor was installed.
+ *
+ * Set them non-zero only for bench work, where a known target distance makes
+ * an out-of-window reading genuinely informative. For reference, the geometry
+ * [REV HW-023 v9] recorded was 0.05-0.15 m to a full water line and
+ * 0.70-1.00 m to the tank floor - roughly 230 us to 7000 us. */
+#define HN_US_PLAUSIBLE_MIN_US  0U
+#define HN_US_PLAUSIBLE_MAX_US  0U
 
 /* Duration of the pull-up presence probe on the echo line. The line only has to
  * settle through the 100 ohm series resistor and the harness capacitance, which

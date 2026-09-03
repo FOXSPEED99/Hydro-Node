@@ -119,12 +119,21 @@ static void test_ultrasonic()
     }
 
     {
-        case_name("a stable reading below the installation window is flagged, not dropped");
+        /* The shipping configuration has the geometry window disabled: tank
+         * geometry lives on the Hub, so the Node reports a short echo as a
+         * perfectly good measurement rather than labelling it against a window
+         * compiled into a device on a roof. */
         const uint16_t s[5] = { 200, 201, 202, 203, 204 };
         hn_ultrasonic_reading_t r = fresh_us();
         hn_filter_ultrasonic(s, 5, r);
-        CHECK(r.status == HN_STATUS_OUT_OF_RANGE, "status=%d", (int)r.status);
         CHECK(r.echo_us == 202, "echo=%u", r.echo_us);
+#if HN_US_PLAUSIBLE_MAX_US > 0
+        case_name("with the bench geometry window on, a short echo is flagged");
+        CHECK(r.status == HN_STATUS_OUT_OF_RANGE, "status=%d", (int)r.status);
+#else
+        case_name("a short echo is reported, not flagged - the Hub owns geometry");
+        CHECK(r.status == HN_STATUS_OK, "status=%d", (int)r.status);
+#endif
     }
 
     {

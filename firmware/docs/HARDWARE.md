@@ -251,7 +251,7 @@ to be wrong. None of them should be taken on trust.
 | 2 | The flow switch is normally-open and **closes** on flow | Standard for an HT-60 class paddle switch. | Blow through the switch and watch `fl.d` in the serial output. | `HN_FLOW_FILLING_IS_LOW` in `hn_config.h`. |
 | 3 | The RCWL-1670 drives ECHO **low** while idle | Normal for HC-SR04-compatible modules; it is what makes the pull-up presence probe work. | Scope the echo line with the module connected and idle. | Only the presence *probe* is affected. A real echo already overrides it, so the reading itself stays correct. |
 | 4 | The DS18B20 measures the air the pulse travels through | It is the temperature that determines the speed of sound. | Note where the probe is physically mounted. | If the probe is in the **water**, the compensation is using a poor proxy for headspace air temperature. The review's HW-023 makes this the dominant error term in the whole measurement — see §6. |
-| 5 | The module's blind zone is under 50 mm | Datasheet claims 2 cm. | Flat target, 2 cm outward in 5 mm steps, 20 readings each (review HW-051). | Mechanical: raise the sensor standoff. The firmware already reports this case as `NO ECHO` rather than as a fault. |
+| 5 | ~~The module's blind zone is under 50 mm~~ → **CLOSED: the Hub owns it** | Not a firmware assumption. The Node has no blind-zone constant and reports a silent sensor as `NO ECHO`, which is the honest raw result. The Hub holds the blind zone alongside the tank height and volume curve, where it can be revised without a site visit. | Measure it once when commissioning the Hub, not the Node. | Nothing in the Node changes. |
 
 ---
 
@@ -271,6 +271,10 @@ That is not laziness — three of the corrections cannot sensibly live here:
 - **Humidity.** A tank headspace is essentially always saturated, which raises
   the speed of sound by 0.35–0.6 % over dry air.
 - **Tank geometry and the volume curve**, which differ per installation.
+- **The transducer blind zone**, for the same reason: it is a property of the
+  module and the mounting standoff, and the Node reporting `NO ECHO` is the
+  honest raw answer. Deciding whether that means "full" or "faulty" needs the
+  tank height, which only the Hub has.
 
 Freezing any of those into a sealed rooftop device means a site visit to change
 them. On the Hub they are a Wi-Fi update. The millimetre figure the serial
