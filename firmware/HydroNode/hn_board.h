@@ -17,6 +17,27 @@
 #include <Arduino.h>
 #include <stdint.h>
 
+/*
+ * Board-selection guard.
+ *
+ * This is a Pro Mini 3.3 V / 8 MHz. Selecting the 5 V / 16 MHz processor by
+ * mistake still compiles and still uploads, and then fails in a way that is
+ * genuinely hard to diagnose: every _delay_us() in the 1-Wire driver runs
+ * twice as long, so the DS18B20 stops answering, and the UART divisor is
+ * halved, so the serial monitor shows nothing but garbage at 9600 baud - which
+ * looks like a dead board, not a wrong menu setting.
+ *
+ * In the Arduino IDE:  Tools > Processor > "ATmega328P (3.3V, 8 MHz)"
+ *
+ * If you are deliberately porting this to another clock, define
+ * HN_ALLOW_ANY_F_CPU and re-check every timing constant in hn_config.h first.
+ */
+#ifndef HN_ALLOW_ANY_F_CPU
+#if F_CPU != 8000000L
+#error "Wrong board/processor selected. This firmware targets the Arduino Pro Mini 3.3V 8MHz (ATmega328P). In the Arduino IDE set Tools > Processor to 'ATmega328P (3.3V, 8 MHz)'."
+#endif
+#endif
+
 /* ------------------------------------------------------------------------- */
 /* Pin map                                                                    */
 /* ------------------------------------------------------------------------- */

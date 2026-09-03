@@ -14,26 +14,65 @@ VCC fed directly from a 3.6 V lithium pack, ground switched by a magnet-operated
 
 ---
 
-## Build
+## Build and flash — Arduino IDE
 
-**PlatformIO** (primary):
+The project is laid out as a normal Arduino sketch. There is nothing to
+install beyond the IDE itself.
 
-```
-pio run                 # build
-pio run -t upload       # flash via the J? header with a 3.3 V FTDI/CP2102
-pio device monitor      # read the report at 9600 baud
-```
+1. **Open the sketch.** `File > Open…` → `firmware/HydroNode/HydroNode.ino`.
+   All the `.cpp` and `.h` files appear as tabs, including `hn_config.h`, which
+   is where every tunable lives.
 
-**Make** (no registry access needed — this is what CI and the bench use):
+2. **Select the board.**
+
+   | Menu | Setting |
+   |---|---|
+   | Tools → Board | Arduino AVR Boards → **Arduino Pro or Pro Mini** |
+   | Tools → Processor | **ATmega328P (3.3V, 8 MHz)** |
+   | Tools → Port | your USB-serial adapter |
+
+   The Processor setting matters more than it looks. Choosing the 5 V / 16 MHz
+   variant still compiles and still uploads, and then fails in a way that is
+   genuinely hard to diagnose — every delay in the 1-Wire driver runs twice as
+   long, so the temperature sensor stops answering, and the serial monitor
+   shows only garbage because the UART divisor is halved. So the firmware
+   refuses to build on the wrong clock and tells you which menu to fix.
+
+3. **Verify** (✓). You should see roughly:
+
+   ```
+   Sketch uses 12194 bytes (39%) of program storage space.
+   Global variables use 310 bytes (15%) of dynamic memory.
+   ```
+
+4. **Upload** (→). The bootloader runs at 57600 baud and DTR handles the reset,
+   so no button press is needed.
+
+5. **Serial Monitor** (`Ctrl+Shift+M`) at **9600 baud**.
+
+Wiring the USB-serial adapter to the `J?` header, and the warning about never
+connecting its VCC while the battery is fitted, are in
+[`docs/HARDWARE.md`](docs/HARDWARE.md).
+
+### Other build routes
+
+Both use the same files — there is only one copy of the source.
+
+**Make**, for CI or a shell workflow (this is what the firmware is regression
+tested with):
 
 ```
 sudo apt install gcc-avr avr-libc arduino-core-avr
 make                    # build, print size
-make test               # host tests for the decision logic
+make test               # 43 host tests for the decision logic
 ```
 
-Current footprint: **12.2 kB flash (37 %), 310 B SRAM (15 %)** — room for the
-radio, the sleep manager and the pairing state machine.
+**PlatformIO**, if you prefer it: `pio run`. `platformio.ini` points `src_dir`
+at the sketch folder.
+
+Current footprint: **12194 bytes flash (39 % of the Pro Mini's 30720), 310 B
+SRAM (15 %)** — room for the radio, the sleep manager and the pairing state
+machine.
 
 No external libraries. The 1-Wire master and the DS18B20 driver are part of this
 firmware on purpose: the fault detection Section 1 exists to provide lives in
@@ -99,6 +138,8 @@ outside what this installation expects.
 
 ## Module map
 
+Everything lives flat in `HydroNode/`, so every file is a tab in the IDE.
+
 | File | Owns |
 |---|---|
 | `hn_board.*` | Pin map, safe idle states, ADC power, and the two timing hooks Section 3 replaces |
@@ -113,7 +154,7 @@ outside what this installation expects.
 | `hn_report.*` | Serial output, compiled out entirely when `HN_SERIAL_ENABLED` is 0 |
 | `hn_acquire.*` | Cycle sequencing — the seam Sections 2 and 3 plug into |
 
-`hn_filter.cpp` exists as a separate unit for a specific reason. Sample
+`hn_filter.cpp` exists as a separate translation unit for a specific reason. Sample
 filtering and fault classification are the parts of this firmware most likely to
 be wrong and least likely to be caught on a bench: a median that mishandles an
 outlier and a chattering switch misreported as a wet connector both look

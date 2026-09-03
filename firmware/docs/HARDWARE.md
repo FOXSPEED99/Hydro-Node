@@ -152,6 +152,47 @@ would make flow-switch presence detection definitive.
 
 ---
 
+## 4.4 Bench connection: powering and programming the board
+
+The `J?` header carries the serial lines **and** the battery rail, so how you
+connect it matters.
+
+| J? pin | Signal | USB-serial adapter |
+|---|---|---|
+| 1 | DTR | DTR |
+| 2 | TXO (the MCU transmits) | **RXD** |
+| 3 | RXI (the MCU receives) | **TXD** |
+| 4 | BATT+ | VCC — see the warning |
+| 5, 6, 7 | GND (switched) | GND (any one) |
+
+**The adapter must be set to 3.3 V.** A 5 V adapter puts 5 V directly onto the
+battery rail and the MCU.
+
+> **Never connect the adapter's VCC while the battery is fitted.** `J?.4` is the
+> `BATT+` net, so adapter VCC back-feeds the LS14500 cells. Those are primary
+> Li-SOCl₂ — non-rechargeable. Back-feeding them is a safety hazard, not just
+> bad practice.
+
+That leaves two valid arrangements:
+
+**Bench powered.** Remove the battery and connect all five lines including VCC.
+The adapter's VCC reaches the MCU's VCC and its ground reaches the switched
+ground net, so the board runs from USB and the magnet latch is bypassed
+entirely — `Q1` is irrelevant and no magnet is needed. This is the convenient
+mode for development.
+
+**Battery powered.** Fit the battery and **leave the adapter's VCC wire
+disconnected** — only DTR, RXD, TXD and GND. Then bring the magnet to the reed
+switch to turn the device on. This is how the product actually runs, and it is
+the arrangement to use for any current measurement or endurance test.
+
+Either way, the DTR line gives the Pro Mini its usual auto-reset, so programming
+needs no button press. Note that resetting the MCU does **not** disturb the
+latch: that independence is deliberate, so a crashed or reflashed Node stays
+powered.
+
+---
+
 ## 5. Assumptions to verify on the bench
 
 The firmware is written so each of these is one line to change if it turns out
