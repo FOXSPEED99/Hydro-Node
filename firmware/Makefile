@@ -1,9 +1,10 @@
 # Hydro Node - Section 1 firmware
 #
-# PlatformIO (platformio.ini) is the primary build. This Makefile is the
-# dependency-light alternative: it needs only avr-gcc, avr-libc and a copy of
-# the Arduino AVR core on disk, which makes it the easy one to run in CI or on a
-# machine that cannot reach the PlatformIO registry.
+# PlatformIO (platformio.ini) and the Arduino IDE both build the HydroNode
+# sketch folder. This Makefile is the dependency-light alternative: it needs
+# only avr-gcc, avr-libc and a copy of the Arduino AVR core on disk, which makes
+# it the easy one to run in CI or on a machine that cannot reach the PlatformIO
+# registry.
 #
 #   sudo apt install gcc-avr avr-libc arduino-core-avr
 #   make            build ELF + HEX, print size
@@ -31,11 +32,13 @@ CORE_CXX := $(CORE)/main.cpp $(CORE)/Print.cpp $(CORE)/Stream.cpp \
             $(CORE)/WMath.cpp $(CORE)/WString.cpp $(CORE)/abi.cpp \
             $(CORE)/new.cpp
 
-SRC_CXX  := $(wildcard src/*.cpp)
+SKETCH   := HydroNode
+SRC_CXX  := $(wildcard $(SKETCH)/*.cpp)
+SRC_INO  := $(SKETCH)/$(SKETCH).ino
 
 CPPFLAGS := -DF_CPU=$(F_CPU) -DARDUINO=10816 -DARDUINO_AVR_PRO \
             -DARDUINO_ARCH_AVR \
-            -I include -I $(CORE) -I $(VARIANT)
+            -I $(SKETCH) -I $(CORE) -I $(VARIANT)
 
 COMMON   := -mmcu=$(MCU) -Os -g -flto -ffunction-sections -fdata-sections \
             -funsigned-char -funsigned-bitfields -fpack-struct -fshort-enums
@@ -52,7 +55,8 @@ LDFLAGS  := -mmcu=$(MCU) -Os -flto -Wl,--gc-sections
 
 OBJ := $(patsubst %,$(BUILD)/core/%.o,$(notdir $(CORE_C))) \
        $(patsubst %,$(BUILD)/core/%.o,$(notdir $(CORE_CXX))) \
-       $(patsubst src/%.cpp,$(BUILD)/src/%.o,$(SRC_CXX))
+       $(patsubst $(SKETCH)/%.cpp,$(BUILD)/src/%.o,$(SRC_CXX)) \
+       $(BUILD)/src/$(SKETCH).ino.o
 
 .PHONY: all clean size test
 all: $(TARGET).hex size
@@ -63,8 +67,8 @@ all: $(TARGET).hex size
 test:
 	@mkdir -p $(BUILD)/tests
 	@g++ -std=c++11 -Wall -Wextra -Wshadow -Werror -O1 \
-	     -I tests/shim -I include \
-	     tests/test_filter.cpp src/hn_filter.cpp src/hn_crc8.cpp \
+	     -I tests/shim -I $(SKETCH) \
+	     tests/test_filter.cpp $(SKETCH)/hn_filter.cpp $(SKETCH)/hn_crc8.cpp \
 	     -o $(BUILD)/tests/logic_tests
 	@$(BUILD)/tests/logic_tests
 
@@ -76,9 +80,16 @@ $(BUILD)/core/%.cpp.o: $(CORE)/%.cpp | dirs
 	@echo "  CXX  core/$(notdir $<)"
 	@avr-g++ $(CPPFLAGS) $(CORE_CXXFLAGS) -c $< -o $@
 
-$(BUILD)/src/%.o: src/%.cpp | dirs
+$(BUILD)/src/%.o: $(SKETCH)/%.cpp | dirs
 	@echo "  CXX  $<"
 	@avr-g++ $(CPPFLAGS) $(SRC_CXXFLAGS) -c $< -o $@
+
+# The sketch file. It is a normal translation unit - it includes Arduino.h and
+# declares everything it uses - so it needs no prototype generation and can be
+# compiled directly, with -x c++ only to tell the compiler what .ino means.
+$(BUILD)/src/$(SKETCH).ino.o: $(SRC_INO) | dirs
+	@echo "  CXX  $<"
+	@avr-g++ $(CPPFLAGS) $(SRC_CXXFLAGS) -x c++ -c $< -o $@
 
 $(TARGET).elf: $(OBJ)
 	@echo "  LD   $@"

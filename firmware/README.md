@@ -16,7 +16,19 @@ VCC fed directly from a 3.6 V lithium pack, ground switched by a magnet-operated
 
 ## Build
 
-**PlatformIO** (primary):
+**Arduino IDE** (primary):
+
+Open `HydroNode/HydroNode.ino`, then set:
+
+```
+Tools > Board     > Arduino Pro or Pro Mini
+Tools > Processor > ATmega328P (3.3V, 8 MHz)
+Tools > Port      > your 3.3 V FTDI/CP2102 adapter
+```
+
+Then upload and open Serial Monitor at `9600` baud.
+
+**PlatformIO**:
 
 ```
 pio run                 # build
@@ -98,6 +110,9 @@ outside what this installation expects.
 ---
 
 ## Module map
+
+Everything lives flat in `HydroNode/`, so every file is a tab in the Arduino
+IDE.
 
 | File | Owns |
 |---|---|
