@@ -441,12 +441,28 @@ static void test_telemetry()
         case_name("a healthy cycle maps across intact");
         hn_reading_t r = good_reading();
         hn_packet_t p;
-        hn_telemetry_build(r, 0xC207, 1, p);
+        hn_telemetry_build(r, 0xC207, 1, 3600, p);
         CHECK(p.echo_us == 3402, "echo=%u", p.echo_us);
         CHECK(p.temp_raw == 328, "temp=%d", p.temp_raw);
         CHECK(p.flow_adc8 == (1009 >> 2), "adc=%u", p.flow_adc8);
         CHECK(HN_ST_FLOW(p.st_fl) == HN_W_FLOW_IDLE, "flow state");
         CHECK((p.flags & HN_FLAG_TEMP_CRC_OK) != 0, "crc flag");
+        CHECK(HN_BATT_MV(p.battery_dv) == 3600, "battery=%u mV", HN_BATT_MV(p.battery_dv));
+    }
+
+    {
+        case_name("battery encodes to 10 mV steps and back");
+        hn_reading_t r = good_reading();
+        hn_packet_t p;
+        for (uint16_t mv = 2000; mv <= 4600; mv += 130) {
+            hn_telemetry_build(r, 0xC207, 1, mv, p);
+            const uint16_t back = HN_BATT_MV(p.battery_dv);
+            const uint16_t want = (mv < 2010) ? 2010 : (mv > 4550 ? 4550 : mv);
+            CHECK(back >= want - 10 && back <= want + 10,
+                  "%u mV -> %u mV", mv, back);
+        }
+        hn_telemetry_build(r, 0xC207, 1, 0, p);
+        CHECK(p.battery_dv == HN_BATT_NONE, "unmeasured battery must stay none");
     }
 
     {
@@ -457,7 +473,7 @@ static void test_telemetry()
         r.ultrasonic.status = HN_STATUS_ABSENT;
         r.ultrasonic.presence = HN_PRESENCE_ABSENT;
         hn_packet_t p;
-        hn_telemetry_build(r, 0xC207, 1, p);
+        hn_telemetry_build(r, 0xC207, 1, 3600, p);
         CHECK(p.echo_us == HN_ECHO_NONE, "echo=%u should be none", p.echo_us);
         CHECK(HN_ST_STATUS(p.st_us) == HN_W_ABSENT, "status");
         CHECK(HN_ST_PRESENCE(p.st_us) == HN_W_PRES_ABSENT, "presence");
@@ -468,7 +484,7 @@ static void test_telemetry()
         hn_reading_t r = good_reading();
         r.ultrasonic.status = HN_STATUS_NO_TARGET;
         hn_packet_t p;
-        hn_telemetry_build(r, 0xC207, 1, p);
+        hn_telemetry_build(r, 0xC207, 1, 3600, p);
         CHECK(p.echo_us == HN_ECHO_NONE, "echo");
         CHECK(HN_ST_STATUS(p.st_us) == HN_W_NO_TARGET, "status=%u", HN_ST_STATUS(p.st_us));
         CHECK(HN_ST_PRESENCE(p.st_us) == HN_W_PRES_CONFIRMED, "still connected");
@@ -479,7 +495,7 @@ static void test_telemetry()
         hn_reading_t r = good_reading();
         r.ultrasonic.status = HN_STATUS_UNSTABLE;
         hn_packet_t p;
-        hn_telemetry_build(r, 0xC207, 1, p);
+        hn_telemetry_build(r, 0xC207, 1, 3600, p);
         CHECK(p.echo_us == 3402, "a noisy but real measurement must still reach the Hub");
         CHECK(HN_ST_STATUS(p.st_us) == HN_W_UNSTABLE, "status");
     }
@@ -490,7 +506,7 @@ static void test_telemetry()
         r.temperature.crc_ok = false;
         r.temperature.status = HN_STATUS_FAULT;
         hn_packet_t p;
-        hn_telemetry_build(r, 0xC207, 1, p);
+        hn_telemetry_build(r, 0xC207, 1, 3600, p);
         CHECK(p.temp_raw == HN_TEMP_RAW_NONE, "temp=%d should be none", p.temp_raw);
         CHECK((p.flags & HN_FLAG_TEMP_CRC_OK) == 0, "crc flag should be clear");
     }
@@ -502,7 +518,7 @@ static void test_telemetry()
         r.flow.presence = HN_PRESENCE_CONFIRMED;
         r.level_gated_by_flow = true;
         hn_packet_t p;
-        hn_telemetry_build(r, 0xC207, 1, p);
+        hn_telemetry_build(r, 0xC207, 1, 3600, p);
         CHECK((p.flags & HN_FLAG_GATED_BY_FLOW) != 0, "gate flag");
         CHECK(HN_ST_FLOW(p.st_fl) == HN_W_FLOW_FILLING, "flow state");
     }
@@ -512,7 +528,7 @@ static void test_telemetry()
         hn_reading_t r = good_reading();
         r.seq = 65536UL + 5UL;
         hn_packet_t p;
-        hn_telemetry_build(r, 0xC207, 1, p);
+        hn_telemetry_build(r, 0xC207, 1, 3600, p);
         CHECK(p.seq == 5, "seq=%u", p.seq);
     }
 }

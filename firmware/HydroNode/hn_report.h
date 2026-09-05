@@ -22,6 +22,14 @@ void hn_report_banner();
 void hn_report_selftest(const hn_reading_t &r);
 void hn_report_reading(const hn_reading_t &r);
 
+/* Why we booted, and the battery at that moment. A watchdog reset here is the
+ * difference between "it ran for a month" and "it hung and rebooted 40 times". */
+void hn_report_boot(bool watchdogReset, uint16_t battery_mv);
+
+/* One line per cycle. Left in even on a quiet build because for a field test
+ * this is the number the whole two-year estimate rests on. */
+void hn_report_battery(uint16_t battery_mv);
+
 /* Radio bring-up result, printed once at start-up. */
 void hn_report_radio(bool present);
 

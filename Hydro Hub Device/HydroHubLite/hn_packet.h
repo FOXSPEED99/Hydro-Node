@@ -49,7 +49,7 @@ extern "C" {
 #endif
 
 /* Bump when the layout changes in a way an older Hub would misread. */
-#define HN_PROTO_VERSION   0x01
+#define HN_PROTO_VERSION   0x02
 
 /* Wire size. Both ends check this. */
 #define HN_PACKET_BYTES    19
@@ -70,7 +70,7 @@ extern "C" {
  *  13    1    status: temperature
  *  14    1    status: flow  (also carries the flow state)
  *  15    1    flags
- *  16    1    battery      - decivolts, 0 = not measured (reserved for later)
+ *  16    1    battery      - see HN_BATT_ENCODE; 0 = not measured
  *  17    2    CRC-16 over bytes 0..16
  */
 #define HN_OFF_VERSION     0
@@ -136,6 +136,19 @@ typedef enum {
 #define HN_TEMP_RAW_NONE   ((int16_t)0x8000)
 #define HN_ECHO_NONE       ((uint16_t)0)
 #define HN_BATT_NONE       ((uint8_t)0)
+
+/*
+ * Battery voltage in one byte, as (millivolts - 2000) / 10: a 2.01-4.55 V
+ * range in 10 mV steps.
+ *
+ * Decivolts would have been simpler and useless. Li-SOCl2 has a famously flat
+ * discharge curve - it sits near 3.6 V for most of its life and then falls off
+ * a cliff - so at 0.1 V resolution the reading would not move at all until the
+ * pack was nearly gone. 10 mV steps make the slow sag visible, which is the
+ * whole point of measuring it.
+ */
+#define HN_BATT_ENCODE(mv)  ((uint8_t)((mv) < 2010U ? 1U : ((mv) > 4550U ? 255U : (((mv) - 2000U) / 10U))))
+#define HN_BATT_MV(b)       ((uint16_t)(2000U + (uint16_t)(b) * 10U))
 
 /* ------------------------------------------------------------------------- */
 /* Decoded form                                                               */

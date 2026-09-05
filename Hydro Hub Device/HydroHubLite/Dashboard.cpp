@@ -62,7 +62,9 @@ static TFT_eSprite *s_gauge = nullptr;
 static bool s_gaugeReady = false;
 
 struct Prev {
-    int32_t volume = -1, level = -1, tempDeci = -32768;
+    int32_t volume = -1, level = -1, tempDeci = -32768, battMv = -1;
+    int8_t  net = -1;
+    uint8_t otaPct = 255;
     int32_t gaugePct = -1;
     uint8_t stUs = 0xFF, stTp = 0xFF, stFl = 0xFF, flow = 0xFF;
     int8_t  link = -1;
@@ -235,6 +237,30 @@ static void drawHeaderLive(TFT_eSPI &tft, const DashModel &m, bool full)
         tft.drawString(age, AGE_X, HEADER_H / 2, F_SMALL);
         tft.setTextPadding(0);
         strncpy(s_prev.age, age, sizeof(s_prev.age) - 1);
+    }
+
+    /* Node battery, in the gap between the title and the age. A field test
+     * that ends without a battery figure has told you the system worked but
+     * not what it cost, which is the question. */
+    const int32_t bmv = m.batteryMv ? (int32_t)m.batteryMv : -1;
+    if (full || bmv != s_prev.battMv) {
+        char b[12];
+        if (bmv > 0) snprintf(b, sizeof(b), "BAT %d.%02dV", (int)(bmv / 1000), (int)((bmv % 1000) / 10));
+        else         snprintf(b, sizeof(b), " ");
+        tft.setTextDatum(ML_DATUM);
+        tft.setTextColor(C_INK_MUTED, C_SURFACE);
+        tft.setTextPadding(84);
+        tft.drawString(b, 158, HEADER_H / 2, F_SMALL);
+        tft.setTextPadding(0);
+        s_prev.battMv = bmv;
+    }
+
+    /* A single dot for the network. It is genuinely peripheral - the Hub works
+     * without it - so it gets a dot, not a word. */
+    const int8_t net = m.netOnline ? 1 : 0;
+    if (full || net != s_prev.net) {
+        tft.fillCircle(PILL_X - 134, HEADER_H / 2, 4, m.netOnline ? C_GOOD : C_HAIRLINE);
+        s_prev.net = net;
     }
 
     if (full || (int8_t)m.link != s_prev.link) {
@@ -503,8 +529,130 @@ static void drawDiag(TFT_eSPI &tft, const DashModel &m, bool full)
 }
 
 /* ------------------------------------------------------------------------- */
+/* Field log                                                                  */
+/* ------------------------------------------------------------------------- */
+
+static void row(TFT_eSPI &tft, int &y, const char *label, const char *value, uint16_t col)
+{
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(C_INK_MUTED, C_SURFACE);
+    tft.drawString(label, 16, y, F_SMALL);
+    tft.setTextDatum(TR_DATUM);
+    tft.setTextColor(col, C_SURFACE);
+    tft.drawString(value, SCREEN_W - 16, y, F_SMALL);
+    y += 21;
+}
+
+static void drawField(TFT_eSPI &tft, const DashModel &m, bool full)
+{
+    if (!full && m.seq == s_prev.seq) return;
+    s_prev.seq = m.seq;
+
+    tft.fillRect(0, HEADER_H + 1, SCREEN_W, SCREEN_H - HEADER_H - 1, C_SURFACE);
+    if (m.stats == nullptr) return;
+    const FieldStats &f = *m.stats;
+
+    char b[48];
+    int y = HEADER_H + 10;
+
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(C_INK, C_SURFACE);
+    tft.drawString("FIELD LOG - since the counters were last cleared", 16, y, F_SMALL);
+    y += 26;
+
+    const uint32_t d = f.upSeconds / 86400UL;
+    const uint32_t h = (f.upSeconds % 86400UL) / 3600UL;
+    snprintf(b, sizeof(b), "%lud %luh   (%lu boots)", (unsigned long)d, (unsigned long)h,
+             (unsigned long)f.bootCount);
+    row(tft, y, "running", b, C_INK);
+
+    if (m.reliabilityPct >= 0) {
+        snprintf(b, sizeof(b), "%d%%   %lu ok / %lu lost", m.reliabilityPct,
+                 (unsigned long)f.accepted, (unsigned long)f.missed);
+        row(tft, y, "packets received", b,
+            m.reliabilityPct >= 95 ? C_GOOD : (m.reliabilityPct >= 80 ? C_WARNING : C_CRITICAL));
+    } else {
+        row(tft, y, "packets received", "nothing yet", C_INK_MUTED);
+    }
+
+    /* The worst gap matters more than the average: an average hides a
+     * three-hour hole, and the hole is what you have to design around. */
+    if (f.worstGapSec >= 3600) snprintf(b, sizeof(b), "%lu h %lu m",
+        (unsigned long)(f.worstGapSec / 3600), (unsigned long)((f.worstGapSec % 3600) / 60));
+    else snprintf(b, sizeof(b), "%lu min", (unsigned long)(f.worstGapSec / 60));
+    row(tft, y, "longest silence", b, f.worstGapSec > 1800 ? C_WARNING : C_INK);
+
+    snprintf(b, sizeof(b), "%d to %d dBm   snr min %.1f", f.rssiMin, f.rssiMax,
+             f.snrMinTenths / 10.0f);
+    row(tft, y, "signal", b, C_INK);
+
+    if (f.battFirstMv) {
+        const int drop = (int)f.battFirstMv - (int)f.battLastMv;
+        snprintf(b, sizeof(b), "%d.%02d -> %d.%02d V   (-%d mV)",
+                 f.battFirstMv / 1000, (f.battFirstMv % 1000) / 10,
+                 f.battLastMv / 1000, (f.battLastMv % 1000) / 10, drop);
+        row(tft, y, "battery", b, drop > 300 ? C_WARNING : C_GOOD);
+    } else {
+        row(tft, y, "battery", "not reported", C_INK_MUTED);
+    }
+
+    y += 6;
+    tft.setTextDatum(TL_DATUM);
+    tft.setTextColor(C_INK_MUTED, C_SURFACE);
+    tft.drawString("cycles where a sensor was not ok", 16, y, F_SMALL);
+    y += 22;
+
+    snprintf(b, sizeof(b), "%lu   (%lu were no-echo)", (unsigned long)f.faultLevel,
+             (unsigned long)f.noEcho);
+    row(tft, y, "level", b, f.faultLevel ? C_WARNING : C_GOOD);
+    snprintf(b, sizeof(b), "%lu", (unsigned long)f.faultTemp);
+    row(tft, y, "temperature", b, f.faultTemp ? C_WARNING : C_GOOD);
+    snprintf(b, sizeof(b), "%lu   (%lu filling)", (unsigned long)f.faultFlow,
+             (unsigned long)f.fillingCycles);
+    row(tft, y, "flow", b, f.faultFlow ? C_WARNING : C_GOOD);
+
+    if (m.netOnline && m.netAddr[0]) {
+        y += 4;
+        snprintf(b, sizeof(b), "OTA: %s", m.netAddr);
+        tft.setTextDatum(TL_DATUM);
+        tft.setTextColor(C_INK_MUTED, C_SURFACE);
+        tft.drawString(b, 16, y, F_SMALL);
+    }
+}
+
+/* ------------------------------------------------------------------------- */
 /* Public                                                                     */
 /* ------------------------------------------------------------------------- */
+
+void dashboardDrawOta(TFT_eSPI &tft, uint8_t percent)
+{
+    /* Repainted only when the percentage moves - an OTA is the one moment
+     * where wasting SPI bandwidth on the display could actually matter. */
+    if (percent == s_prev.otaPct) return;
+    const bool first = (s_prev.otaPct == 255);
+    s_prev.otaPct = percent;
+
+    if (first) {
+        tft.fillScreen(C_SURFACE);
+        tft.setTextDatum(MC_DATUM);
+        tft.setTextColor(C_INK, C_SURFACE);
+        tft.setTextSize(2);
+        tft.drawString("UPDATING", SCREEN_W / 2, 110, F_MED);
+        tft.setTextSize(1);
+        tft.setTextColor(C_WARNING, C_SURFACE);
+        tft.drawString("do not power off", SCREEN_W / 2, 152, F_SMALL);
+        tft.drawRoundRect(90, 186, 300, 26, 5, C_HAIRLINE);
+    }
+
+    tft.fillRect(93, 189, (int)(294UL * percent / 100UL), 20, C_WATER);
+    char b[8];
+    snprintf(b, sizeof(b), "%u%%", percent);
+    tft.setTextDatum(MC_DATUM);
+    tft.setTextColor(C_INK, C_SURFACE);
+    tft.setTextPadding(80);
+    tft.drawString(b, SCREEN_W / 2, 232, F_MED);
+    tft.setTextPadding(0);
+}
 
 void dashboardBegin(TFT_eSPI &tft)
 {
@@ -545,8 +693,11 @@ void dashboardRender(TFT_eSPI &tft, const DashModel &m)
 
     drawHeaderLive(tft, m, full);
 
-    if (s_screen == DashScreen::Main) drawMain(tft, m, full);
-    else                              drawDiag(tft, m, full);
+    switch (s_screen) {
+    case DashScreen::Main:  drawMain(tft, m, full);  break;
+    case DashScreen::Field: drawField(tft, m, full); break;
+    default:                drawDiag(tft, m, full);  break;
+    }
 
     s_full = false;
 }

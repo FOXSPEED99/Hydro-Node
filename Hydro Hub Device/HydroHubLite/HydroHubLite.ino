@@ -13,14 +13,19 @@
  * sealed on a roof and must never need to know any of it.
  *
  * Board: ESP32-S3, 480x320 TFT (TFT_eSPI), Ra-02 SX1278 (RadioLib).
- * Libraries: TFT_eSPI, RadioLib. Nothing else.
+ * Libraries: TFT_eSPI, RadioLib. Nothing else - WiFi, OTA and NVS are part of
+ * the ESP32 core.
  */
 
 #include "config.h"
 #include "NodeLink.h"
 #include "TankMath.h"
 #include "Dashboard.h"
+#include "HubNet.h"
+#include "FieldLog.h"
 #include "hn_packet.h"
+
+#include <esp_task_wdt.h>
 
 #include <TFT_eSPI.h>
 
@@ -35,6 +40,30 @@ static_assert(sizeof(kTankLiters) / sizeof(kTankLiters[0]) == TANK_COUNT,
 
 static tank_config_t gTank;
 static bool gRadioOk = false;
+static uint32_t gLastPacketMs = 0;
+
+/*
+ * Reboot if the main loop stops running for HUB_WDT_TIMEOUT_S. A hung Hub on a
+ * wall for three weeks is indistinguishable from a dead one, and a reboot
+ * costs nothing here - the field log lives in NVS and survives it.
+ *
+ * Both API shapes, because the ESP32 core changed it at 3.0 and this has to
+ * build on whichever is installed.
+ */
+static void setupWatchdog()
+{
+#if defined(ESP_ARDUINO_VERSION_MAJOR) && ESP_ARDUINO_VERSION_MAJOR >= 3
+    esp_task_wdt_config_t cfg = {
+        .timeout_ms = HUB_WDT_TIMEOUT_S * 1000,
+        .idle_core_mask = (1 << portNUM_PROCESSORS) - 1,
+        .trigger_panic = true,
+    };
+    if (esp_task_wdt_reconfigure(&cfg) == ESP_ERR_INVALID_STATE) esp_task_wdt_init(&cfg);
+#else
+    esp_task_wdt_init(HUB_WDT_TIMEOUT_S, true);
+#endif
+    esp_task_wdt_add(nullptr);
+}
 
 /* ------------------------------------------------------------------------- */
 
@@ -96,6 +125,12 @@ static void refreshModel()
     model.tankCount   = gTank.tank_count;
     model.haveReading = st.haveLast;
 
+    model.netOnline = (hubNetState() == NetState::Online);
+    strncpy(model.netAddr, hubNetAddress().c_str(), sizeof(model.netAddr) - 1);
+    model.netAddr[sizeof(model.netAddr) - 1] = '\0';
+    model.stats = &fieldLogStats();
+    model.reliabilityPct = fieldLogReliabilityPct();
+
     if (!st.haveLast) return;
 
     const hn_packet_t &p = st.last;
@@ -109,6 +144,7 @@ static void refreshModel()
     model.stFl     = p.st_fl;
     model.flowState = HN_ST_FLOW(p.st_fl);
     model.gated    = (p.flags & HN_FLAG_GATED_BY_FLOW) != 0;
+    model.batteryMv = (p.battery_dv == HN_BATT_NONE) ? 0 : HN_BATT_MV(p.battery_dv);
 
     /* Temperature drives the speed of sound. When the Node has none, fall back
      * to the configured constant and SAY SO - an assumed temperature is a
@@ -137,9 +173,13 @@ static void pollButtons()
     const uint32_t now = millis();
     if (prevA && !a && (now - lastA) > BUTTON_DEBOUNCE_MS) {
         lastA = now;
-        dashboardSetScreen(tft, dashboardScreen() == DashScreen::Main
-                                    ? DashScreen::Diagnostics
-                                    : DashScreen::Main);
+        DashScreen next;
+        switch (dashboardScreen()) {
+        case DashScreen::Main:        next = DashScreen::Diagnostics; break;
+        case DashScreen::Diagnostics: next = DashScreen::Field;       break;
+        default:                      next = DashScreen::Main;        break;
+        }
+        dashboardSetScreen(tft, next);
     }
     prevA = a;
 }
@@ -154,6 +194,7 @@ void setup()
     pinMode(PIN_BUTTON_B, INPUT_PULLUP);
 
     buildTankConfig();
+    fieldLogBegin();
 
     dashboardBegin(tft);
     refreshModel();
@@ -166,18 +207,39 @@ void setup()
         Serial.println("[HUB] radio unavailable - display only");
     }
 
+    hubNetBegin();
+    setupWatchdog();
+
     refreshModel();
     dashboardInvalidate();
 }
 
 void loop()
 {
+    esp_task_wdt_reset();
+    hubNetLoop();
+    fieldLogTick(millis());
+
+    /*
+     * While firmware is being written, nothing else may draw or touch the
+     * radio. An OTA interrupted half-way leaves a device that will not boot,
+     * and this one is on a wall.
+     */
+    if (hubNetOtaActive()) {
+        dashboardDrawOta(tft, hubNetOtaPercent());
+        return;
+    }
+
     if (nodeLinkPoll()) {
-        refreshModel();
         const LinkStats &st = nodeLinkStats();
+        const uint32_t gap = gLastPacketMs ? (millis() - gLastPacketMs) : 0;
+        gLastPacketMs = millis();
+
+        refreshModel();
+        fieldLogOnPacket(st.last, st.rssi, st.snr, gap);
         logPacketAsJson(st.last, model.tank, st.rssi, st.snr);
     } else {
-        /* Even with no packet, the link ages and the header has to keep up. */
+        /* Even with no packet the link ages, and the header has to keep up. */
         refreshModel();
     }
 

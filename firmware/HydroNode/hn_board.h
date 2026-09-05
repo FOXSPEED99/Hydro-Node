@@ -134,10 +134,16 @@ void hn_board_begin();
 /* ------------------------------------------------------------------------- */
 
 /*
- * These two functions are the ONLY places this firmware waits. Section 3
- * replaces their bodies with a watchdog-timed power-down and a timed idle
- * sleep; nothing else in the sensor layer has to change. Keep it that way -
- * do not call delay() directly from a sensor module.
+ * These two are the ONLY places this firmware waits, which is what made
+ * Section 3 a drop-in. Keep it that way - no sensor module calls delay().
+ *
+ * Note the split, because it matters: hn_delay_ms() is for the SHORT waits
+ * inside a measurement (a 60 ms gap between ultrasonic samples, 10 ms for the
+ * DS18B20 to power up). Those idle-sleep, which keeps Timer0 and millis()
+ * running. The long wait between cycles uses hn_sleep_ms() in hn_sleep.h,
+ * which is a full power-down - that stops every clock in the chip, so using it
+ * for a 1 ms poll inside a 1-Wire transaction would break the transaction and
+ * fall below the watchdog's 15 ms floor anyway.
  */
 void hn_delay_ms(uint32_t ms);   /* uint32_t, not uint16_t: the production
                                   * cycle interval is 120000 ms and a 16-bit
