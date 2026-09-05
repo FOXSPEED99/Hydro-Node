@@ -1,7 +1,9 @@
 #include "hn_report.h"
 #include "hn_board.h"
 #include "hn_config.h"
+#include "hn_packet.h"
 #include "hn_temperature.h"
+#include "hn_lora.h"
 
 #include <Arduino.h>
 
@@ -69,7 +71,29 @@ void hn_report_banner()
     Serial.print(F(" samples   DS18B20 "));
     Serial.print((int)HN_TEMP_RESOLUTION_BITS);
     Serial.println(F("-bit"));
-#if HN_PARK_LORA_PINS
+#if HN_LORA_ENABLED
+    Serial.print(F("LoRa  "));
+    Serial.print((unsigned long)(HN_LORA_FREQ_HZ / 1000000UL));
+    Serial.print(F(" MHz  SF"));
+    Serial.print((int)HN_LORA_SPREADING_FACTOR);
+    Serial.print(F("  BW"));
+    Serial.print((int)HN_LORA_BW_KHZ);
+    Serial.print(F("k  CR4/"));
+    Serial.print((int)HN_LORA_CODING_RATE);
+    Serial.print(F("  sync 0x"));
+    Serial.print((int)HN_LORA_SYNC_WORD, HEX);
+    Serial.print(F("  +"));
+    Serial.print((int)HN_LORA_TX_POWER_DBM);
+    Serial.println(F(" dBm"));
+    Serial.print(F("      pair "));
+    Serial.print(F(HN_PAIR_ID));
+    Serial.print(F("  node "));
+    Serial.print((int)HN_NODE_ID);
+    Serial.print(F("  packet "));
+    Serial.print((int)HN_PACKET_BYTES);
+    Serial.println(F(" bytes"));
+    Serial.println(F("      !! antenna must be connected before transmitting !!"));
+#elif HN_PARK_LORA_PINS
     Serial.println(F("LoRa pins parked (Ra-02 held in reset) - Section 2 takes these over"));
 #endif
     Serial.println(F("Raw values only: the Hub owns every conversion."));
@@ -272,6 +296,43 @@ static void report_machine(const hn_reading_t &r)
 }
 #endif
 
+void hn_report_radio(bool present)
+{
+    Serial.println();
+    if (present) {
+        Serial.println(F("--- radio ------------------------------------------------------"));
+        Serial.println(F("  Ra-02 SX1278 found and configured, sleeping until the first send."));
+    } else {
+        Serial.println(F("--- radio: NOT FOUND -------------------------------------------"));
+        Serial.println(F("  The SX1278 did not identify itself over SPI. It is soldered to"));
+        Serial.println(F("  this board, not on a connector, so this is a solder or supply"));
+        Serial.println(F("  fault rather than a missing module. Sensors still run; nothing"));
+        Serial.println(F("  will be transmitted."));
+    }
+    Serial.println(F("----------------------------------------------------------------"));
+}
+
+void hn_report_tx(bool sent, uint8_t bytes, uint16_t airtime_ms)
+{
+    Serial.print(F("  LoRa  "));
+    if (sent) {
+        Serial.print(F("sent "));
+        Serial.print(bytes);
+        Serial.print(F(" bytes in "));
+        Serial.print(airtime_ms);
+        Serial.print(F(" ms"));
+        /* The airtime is the term the two-year battery estimate rests on, so
+         * it is printed every cycle rather than assumed from the datasheet. */
+        Serial.print(F("  (~"));
+        Serial.print((unsigned long)airtime_ms / 10UL);
+        Serial.println(F(" mA*s at 100 mA)"));
+    } else if (!hn_lora_present()) {
+        Serial.println(F("not sent - no radio"));
+    } else {
+        Serial.println(F("TIMED OUT - the radio stopped responding mid-transmission"));
+    }
+}
+
 void hn_report_reading(const hn_reading_t &r)
 {
     report_human(r);
@@ -286,5 +347,7 @@ void hn_report_begin()                        {}
 void hn_report_banner()                       {}
 void hn_report_selftest(const hn_reading_t &)  {}
 void hn_report_reading(const hn_reading_t &)   {}
+void hn_report_radio(bool)                     {}
+void hn_report_tx(bool, uint8_t, uint16_t)     {}
 
 #endif

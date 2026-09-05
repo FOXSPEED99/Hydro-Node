@@ -16,6 +16,8 @@
 #include "hn_filter.h"
 #include "hn_crc8.h"
 #include "hn_config.h"
+#include "hn_packet.h"
+#include "hn_telemetry.h"
 
 static int g_failures = 0;
 static int g_checks   = 0;
@@ -278,6 +280,220 @@ static void test_crc8()
     }
 }
 
+
+/* ------------------------------------------------------------------------- */
+/* Wire format                                                                */
+/* ------------------------------------------------------------------------- */
+
+static hn_packet_t sample_packet()
+{
+    hn_packet_t p;
+    p.version = HN_PROTO_VERSION;
+    p.pair_hash = 0xC207;
+    p.node_id = 0x0001;
+    p.seq = 4242;
+    p.echo_us = 3402;
+    p.temp_raw = 328;
+    p.flow_adc8 = 252;
+    p.st_us = HN_ST_PACK(HN_W_OK, HN_W_PRES_CONFIRMED);
+    p.st_tp = HN_ST_PACK(HN_W_OK, HN_W_PRES_CONFIRMED);
+    p.st_fl = HN_ST_FLOW_PACK(HN_ST_PACK(HN_W_OK, HN_W_PRES_UNCONFIRMED), HN_W_FLOW_IDLE);
+    p.flags = HN_FLAG_FLOW_LEVEL | HN_FLAG_TEMP_CRC_OK;
+    p.battery_dv = HN_BATT_NONE;
+    return p;
+}
+
+static void test_packet()
+{
+    std::printf("wire format\n");
+
+    {
+        case_name("CRC-16/CCITT-FALSE catalogue check value");
+        const uint8_t v[9] = { '1','2','3','4','5','6','7','8','9' };
+        CHECK(hn_crc16(v, 9) == 0x29B1, "crc=0x%04X expected 0x29B1", hn_crc16(v, 9));
+    }
+
+    {
+        case_name("a packet survives encode -> decode unchanged");
+        hn_packet_t in = sample_packet();
+        uint8_t wire[HN_PACKET_BYTES];
+        hn_packet_encode(&in, wire);
+
+        hn_packet_t out;
+        CHECK(hn_packet_decode(wire, HN_PACKET_BYTES, &out) == HN_DEC_OK, "decode failed");
+        CHECK(out.pair_hash == in.pair_hash, "pair");
+        CHECK(out.node_id == in.node_id, "node");
+        CHECK(out.seq == in.seq, "seq");
+        CHECK(out.echo_us == in.echo_us, "echo=%u", out.echo_us);
+        CHECK(out.temp_raw == in.temp_raw, "temp=%d", out.temp_raw);
+        CHECK(out.flow_adc8 == in.flow_adc8, "adc");
+        CHECK(out.st_us == in.st_us && out.st_tp == in.st_tp && out.st_fl == in.st_fl, "status");
+        CHECK(out.flags == in.flags, "flags");
+    }
+
+    {
+        case_name("the packet is exactly 19 bytes - airtime is the whole point");
+        hn_packet_t in = sample_packet();
+        uint8_t wire[HN_PACKET_BYTES + 4] = {0};
+        hn_packet_encode(&in, wire);
+        CHECK(HN_PACKET_BYTES == 19, "size=%d", (int)HN_PACKET_BYTES);
+        CHECK(wire[HN_PACKET_BYTES] == 0 && wire[HN_PACKET_BYTES + 1] == 0,
+              "encode wrote past the end of the packet");
+    }
+
+    {
+        case_name("a single corrupted byte is rejected, not misread");
+        hn_packet_t in = sample_packet();
+        uint8_t wire[HN_PACKET_BYTES];
+        hn_packet_encode(&in, wire);
+        wire[HN_OFF_ECHO] ^= 0x01;          /* one bit of the distance */
+        hn_packet_t out;
+        CHECK(hn_packet_decode(wire, HN_PACKET_BYTES, &out) == HN_DEC_BAD_CRC,
+              "corrupted packet accepted");
+    }
+
+    {
+        case_name("wrong length and wrong version are rejected");
+        hn_packet_t in = sample_packet();
+        uint8_t wire[HN_PACKET_BYTES];
+        hn_packet_encode(&in, wire);
+        hn_packet_t out;
+        CHECK(hn_packet_decode(wire, HN_PACKET_BYTES - 1, &out) == HN_DEC_BAD_LENGTH, "length");
+        wire[HN_OFF_VERSION] = HN_PROTO_VERSION + 1;
+        CHECK(hn_packet_decode(wire, HN_PACKET_BYTES, &out) == HN_DEC_BAD_VERSION, "version");
+    }
+
+    {
+        case_name("status and presence pack into one byte without collision");
+        for (int st = 0; st <= 6; ++st) {
+            for (int pr = 0; pr <= 3; ++pr) {
+                uint8_t b = HN_ST_PACK(st, pr);
+                CHECK(HN_ST_STATUS(b) == st && HN_ST_PRESENCE(b) == pr,
+                      "st=%d pr=%d packed to 0x%02X", st, pr, b);
+            }
+        }
+        for (int fl = 0; fl <= 2; ++fl) {
+            uint8_t b = HN_ST_FLOW_PACK(HN_ST_PACK(HN_W_FAULT, HN_W_PRES_ABSENT), fl);
+            CHECK(HN_ST_STATUS(b) == HN_W_FAULT && HN_ST_PRESENCE(b) == HN_W_PRES_ABSENT &&
+                  HN_ST_FLOW(b) == fl, "flow=%d collided", fl);
+        }
+    }
+
+    {
+        case_name("the pair hash separates two nearby installations");
+        CHECK(hn_pair_hash("SWS-PAIR-0001") == 0xC207, "hash=0x%04X", hn_pair_hash("SWS-PAIR-0001"));
+        CHECK(hn_pair_hash("SWS-PAIR-0001") != hn_pair_hash("SWS-PAIR-0002"), "collision");
+    }
+}
+
+/* ------------------------------------------------------------------------- */
+/* Reading -> packet                                                          */
+/* ------------------------------------------------------------------------- */
+
+static hn_reading_t good_reading()
+{
+    hn_reading_t r;
+    hn_reading_clear(r);
+    r.seq = 7;
+    r.ultrasonic.status = HN_STATUS_OK;
+    r.ultrasonic.presence = HN_PRESENCE_CONFIRMED;
+    r.ultrasonic.echo_us = 3402;
+    r.temperature.status = HN_STATUS_OK;
+    r.temperature.presence = HN_PRESENCE_CONFIRMED;
+    r.temperature.raw = 328;
+    r.temperature.crc_ok = true;
+    r.flow.status = HN_STATUS_OK;
+    r.flow.presence = HN_PRESENCE_UNCONFIRMED;
+    r.flow.state = HN_FLOW_IDLE;
+    r.flow.level_adc = 1009;
+    r.flow.level_digital = true;
+    return r;
+}
+
+static void test_telemetry()
+{
+    std::printf("reading -> packet\n");
+
+    {
+        case_name("a healthy cycle maps across intact");
+        hn_reading_t r = good_reading();
+        hn_packet_t p;
+        hn_telemetry_build(r, 0xC207, 1, p);
+        CHECK(p.echo_us == 3402, "echo=%u", p.echo_us);
+        CHECK(p.temp_raw == 328, "temp=%d", p.temp_raw);
+        CHECK(p.flow_adc8 == (1009 >> 2), "adc=%u", p.flow_adc8);
+        CHECK(HN_ST_FLOW(p.st_fl) == HN_W_FLOW_IDLE, "flow state");
+        CHECK((p.flags & HN_FLAG_TEMP_CRC_OK) != 0, "crc flag");
+    }
+
+    {
+        /* The failure that matters most: a dead ultrasonic must not arrive as
+         * a number the Hub can turn into a water level. */
+        case_name("a missing ultrasonic sends NO echo value, not a stale or zero one");
+        hn_reading_t r = good_reading();
+        r.ultrasonic.status = HN_STATUS_ABSENT;
+        r.ultrasonic.presence = HN_PRESENCE_ABSENT;
+        hn_packet_t p;
+        hn_telemetry_build(r, 0xC207, 1, p);
+        CHECK(p.echo_us == HN_ECHO_NONE, "echo=%u should be none", p.echo_us);
+        CHECK(HN_ST_STATUS(p.st_us) == HN_W_ABSENT, "status");
+        CHECK(HN_ST_PRESENCE(p.st_us) == HN_W_PRES_ABSENT, "presence");
+    }
+
+    {
+        case_name("NO ECHO on a healthy sensor is distinguishable from a fault");
+        hn_reading_t r = good_reading();
+        r.ultrasonic.status = HN_STATUS_NO_TARGET;
+        hn_packet_t p;
+        hn_telemetry_build(r, 0xC207, 1, p);
+        CHECK(p.echo_us == HN_ECHO_NONE, "echo");
+        CHECK(HN_ST_STATUS(p.st_us) == HN_W_NO_TARGET, "status=%u", HN_ST_STATUS(p.st_us));
+        CHECK(HN_ST_PRESENCE(p.st_us) == HN_W_PRES_CONFIRMED, "still connected");
+    }
+
+    {
+        case_name("an UNSTABLE reading is still sent, and labelled");
+        hn_reading_t r = good_reading();
+        r.ultrasonic.status = HN_STATUS_UNSTABLE;
+        hn_packet_t p;
+        hn_telemetry_build(r, 0xC207, 1, p);
+        CHECK(p.echo_us == 3402, "a noisy but real measurement must still reach the Hub");
+        CHECK(HN_ST_STATUS(p.st_us) == HN_W_UNSTABLE, "status");
+    }
+
+    {
+        case_name("a temperature that failed CRC is not sent as a temperature");
+        hn_reading_t r = good_reading();
+        r.temperature.crc_ok = false;
+        r.temperature.status = HN_STATUS_FAULT;
+        hn_packet_t p;
+        hn_telemetry_build(r, 0xC207, 1, p);
+        CHECK(p.temp_raw == HN_TEMP_RAW_NONE, "temp=%d should be none", p.temp_raw);
+        CHECK((p.flags & HN_FLAG_TEMP_CRC_OK) == 0, "crc flag should be clear");
+    }
+
+    {
+        case_name("filling sets the gate flag so the Hub can distrust the level");
+        hn_reading_t r = good_reading();
+        r.flow.state = HN_FLOW_FILLING;
+        r.flow.presence = HN_PRESENCE_CONFIRMED;
+        r.level_gated_by_flow = true;
+        hn_packet_t p;
+        hn_telemetry_build(r, 0xC207, 1, p);
+        CHECK((p.flags & HN_FLAG_GATED_BY_FLOW) != 0, "gate flag");
+        CHECK(HN_ST_FLOW(p.st_fl) == HN_W_FLOW_FILLING, "flow state");
+    }
+
+    {
+        case_name("the 32-bit cycle counter truncates cleanly onto 16 bits");
+        hn_reading_t r = good_reading();
+        r.seq = 65536UL + 5UL;
+        hn_packet_t p;
+        hn_telemetry_build(r, 0xC207, 1, p);
+        CHECK(p.seq == 5, "seq=%u", p.seq);
+    }
+}
+
 int main()
 {
     std::printf("\nHydro Node - Section 1 logic tests\n");
@@ -285,6 +501,8 @@ int main()
     test_ultrasonic();
     test_flow();
     test_crc8();
+    test_packet();
+    test_telemetry();
     std::printf("=================================\n");
     std::printf("%d checks, %d failures\n\n", g_checks, g_failures);
     return g_failures ? 1 : 0;

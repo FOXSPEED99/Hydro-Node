@@ -52,13 +52,22 @@
 #define HN_REPORT_MACHINE_LINE  1
 #endif
 
-/* Section 1 does not own the radio, but the Ra-02 is soldered to the board and
- * powered whenever the latch is on [SCH: U3.3 = BATT+, U3 GND = switched GND].
- * Parking it in reset keeps it off the SPI bus and out of DIO0 while this
- * firmware runs. Section 2's LoRaManager takes ownership of these pins and
- * must then build with this set to 0. */
+/* Build a sensors-only Node by setting this to 0. See the LoRa section at the
+ * end of this file for the modem settings. Declared here because the pin
+ * parking below depends on it. */
+#ifndef HN_LORA_ENABLED
+#define HN_LORA_ENABLED         1
+#endif
+
+/* The Ra-02 is soldered to the board and powered whenever the latch is on
+ * [SCH: U3.3 = BATT+, U3 GND = switched GND], so "not using it" has to mean
+ * something definite. Parking holds it in reset and off the SPI bus.
+ *
+ * This follows HN_LORA_ENABLED automatically: once the radio driver owns those
+ * pins, parking them would fight it. Overridable for bench work where you want
+ * the radio held down while the sensors run. */
 #ifndef HN_PARK_LORA_PINS
-#define HN_PARK_LORA_PINS       1
+#define HN_PARK_LORA_PINS       (!HN_LORA_ENABLED)
 #endif
 
 /* ------------------------------------------------------------------------- */
@@ -267,3 +276,55 @@
 #define HN_FLOW_FILLING_IS_LOW   1
 
 #endif /* HN_CONFIG_H */
+
+/* ------------------------------------------------------------------------- */
+/* LoRa - Ra-02 / SX1278 (Section 2)                                          */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * MODEM SETTINGS - THESE MUST MATCH THE HUB EXACTLY.
+ * The Hub's values live in "Hydro Hub Device/HydroHubLite/config.h"; any
+ * difference in these eight numbers means the two radios simply never hear
+ * each other, with no error message on either end to say why.
+ */
+#define HN_LORA_FREQ_HZ         433000000UL  /* Ra-02 is SX1278: 410-525 MHz  */
+#define HN_LORA_BW_KHZ          125
+#define HN_LORA_CODING_RATE     5            /* 4/5                           */
+#define HN_LORA_SYNC_WORD       0x42         /* pair isolation, layer 1       */
+#define HN_LORA_PREAMBLE_LEN    8
+
+/*
+ * Spreading factor: the single biggest lever on battery life.
+ *
+ * Airtime roughly doubles per step, and the radio draws ~100 mA for all of it.
+ * For this 19-byte packet, against 4.4 Ah usable over two years:
+ *
+ *   SF7   57 ms    5.7 mA*s/TX    1.8 Ah    2.5x margin
+ *   SF8  103 ms   10.3 mA*s/TX    2.4 Ah    1.8x margin
+ *   SF9  185 ms   18.5 mA*s/TX    3.6 Ah    1.2x margin  <- barely passes
+ *
+ * SF9 is the ceiling the Stage 0 review set (HW-031) and it is where bring-up
+ * starts, because it has ~5 dB more link margin than SF7 and the first job is
+ * simply to hear each other. Once the Hub is showing RSSI and SNR, drop to the
+ * lowest SF that still has comfortable margin - roughly 10 dB of SNR headroom
+ * - and the battery gets that 2x back. Decide it from the measurement, not
+ * from this comment.
+ */
+#define HN_LORA_SPREADING_FACTOR 9
+
+/* +17 dBm on PA_BOOST, matching the Hub's LORA_TX_POWER_DBM. The review
+ * (HW-006, HW-031) suggests dropping toward +14 dBm once the link is
+ * characterised: it nearly halves the peak current, which keeps the two
+ * LS14500 cells inside their 50 mA continuous rating and reduces the rail
+ * droop that HW-042 is about. Do that with data, after the antenna is
+ * properly mounted - a good antenna is worth more dB than the PA is. */
+#define HN_LORA_TX_POWER_DBM    17
+
+/* Hard backstop on a transmission. Worst case airtime here is ~200 ms; if
+ * TxDone has not arrived in 2 s the radio has stopped responding. */
+#define HN_LORA_TX_TIMEOUT_MS   2000U
+
+/* Device identity. DEVICE_PAIR_ID must be byte-identical to the Hub's, and is
+ * hashed to 16 bits before it goes on the wire - see hn_packet.h. */
+#define HN_PAIR_ID              "SWS-PAIR-0001"
+#define HN_NODE_ID              1

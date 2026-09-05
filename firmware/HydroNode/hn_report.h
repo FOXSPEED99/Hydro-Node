@@ -22,4 +22,11 @@ void hn_report_banner();
 void hn_report_selftest(const hn_reading_t &r);
 void hn_report_reading(const hn_reading_t &r);
 
+/* Radio bring-up result, printed once at start-up. */
+void hn_report_radio(bool present);
+
+/* One line per transmission: whether it completed, and the measured airtime,
+ * which is the number the whole battery model turns on. */
+void hn_report_tx(bool sent, uint8_t bytes, uint16_t airtime_ms);
+
 #endif /* HN_REPORT_H */

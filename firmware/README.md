@@ -214,3 +214,51 @@ Still open:
   `docs/HARDWARE.md` §4.3.
 * **The blind zone.** The single most informative measurement left on the
   ultrasonic; `docs/HARDWARE.md` §5 row 5.
+
+---
+
+## Section 2 — LoRa
+
+The Node transmits a **19-byte binary packet** to the Hub after every
+acquisition. `hn_packet.h` is the contract; a byte-identical copy lives in
+`Hydro Hub Device/HydroHubLite/` and `make check-protocol` fails the build if
+the two drift.
+
+### Why binary and not JSON
+
+On LoRa, payload length is an energy question — airtime is roughly proportional
+to bytes, and the radio draws ~100 mA for every millisecond of it. Against the
+two-year target on 4.4 Ah usable:
+
+| Payload | Airtime | Charge/TX | 2-yr total | Margin |
+|---|---|---|---|---|
+| JSON ~110 B @ SF9 | 595 ms | 59.5 mA·s | 9.6 Ah | **0.46× — fails** |
+| binary 19 B @ SF9 | 185 ms | 18.5 mA·s | 3.6 Ah | 1.21× |
+| binary 19 B @ SF7 | 57 ms | 5.7 mA·s | 1.8 Ah | **2.49×** |
+
+Same information either way; text costs about six times the transmit energy.
+Debuggability is not lost — the Hub decodes the packet and prints it as JSON on
+its serial port.
+
+### What is sent, and what is deliberately not
+
+Raw values only: echo microseconds, the DS18B20's own register, the flow
+switch's ADC count, and a status + presence code per sensor. No distances, no
+percentages, no litres.
+
+The one rule worth knowing: **a sensor that failed sends no value at all**, not
+a stale one and not a zero. `ABSENT`, `FAULT` and `NO ECHO` all carry
+`HN_ECHO_NONE`, so the Hub cannot turn a dead sensor into a water level. An
+`UNSTABLE` reading *is* sent, labelled — a noisy but real measurement is still
+the Hub's to judge.
+
+### Spreading factor
+
+`HN_LORA_SPREADING_FACTOR` starts at 9 for bring-up, because it has ~5 dB more
+margin than SF7 and the first job is simply for the two ends to hear each other.
+It costs 3× the airtime. Once the Hub's diagnostics screen shows real RSSI and
+SNR, drop to the lowest SF with comfortable headroom and the battery margin
+roughly doubles. Decide it from the measurement.
+
+> **Never transmit without the antenna connected.** An open IPEX/SMA connector
+> reflects the PA output back into the SX1278 and can destroy it.
