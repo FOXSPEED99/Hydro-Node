@@ -1,9 +1,10 @@
 # Hydro Node - Section 1 firmware
 #
-# PlatformIO (platformio.ini) is the primary build. This Makefile is the
-# dependency-light alternative: it needs only avr-gcc, avr-libc and a copy of
-# the Arduino AVR core on disk, which makes it the easy one to run in CI or on a
-# machine that cannot reach the PlatformIO registry.
+# PlatformIO (platformio.ini) and the Arduino IDE both build the HydroNode
+# sketch folder. This Makefile is the dependency-light alternative: it needs
+# only avr-gcc, avr-libc and a copy of the Arduino AVR core on disk, which makes
+# it the easy one to run in CI or on a machine that cannot reach the PlatformIO
+# registry.
 #
 #   sudo apt install gcc-avr avr-libc arduino-core-avr
 #   make            build ELF + HEX, print size
