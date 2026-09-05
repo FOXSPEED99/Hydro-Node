@@ -70,8 +70,25 @@ hn_presence_t hn_ultrasonic_probe_presence()
     pinMode(HN_PIN_US_ECHO, INPUT_PULLUP);
     _delay_us(HN_US_PRESENCE_PROBE_US);
     uint8_t floating = digitalRead(HN_PIN_US_ECHO);
-    pinMode(HN_PIN_US_ECHO, INPUT);          /* pull-up off again */
 
+    /*
+     * The pull-up now STAYS ON for the measurement that follows, which is a
+     * change from leaving it on for 200 us.
+     *
+     * With the sensor connected it changes nothing: the module's echo output
+     * is push-pull and overrides a ~40 kohm pull-up without noticing.
+     *
+     * With the harness unplugged it changes everything. A bare input pin on a
+     * length of cable is an antenna: it picks up mains hum and switching noise
+     * and produces edges, and those edges look exactly like echo pulses to a
+     * timing loop. That is how an unplugged sensor came back reported as
+     * "noisy" rather than "missing". Holding the line high makes the
+     * disconnected case deterministic - no rising edge, ever - instead of
+     * leaving it to whatever the cable happened to pick up.
+     *
+     * Cost when connected: ~70 uA for the ~40 ms of a measurement window,
+     * about 14 uA*s per cycle against a ~10 mA*s budget. 0.14%.
+     */
     return floating ? HN_PRESENCE_ABSENT : HN_PRESENCE_CONFIRMED;
 }
 
@@ -191,7 +208,7 @@ void hn_ultrasonic_read(hn_ultrasonic_reading_t &r)
 
     r.presence = hn_ultrasonic_probe_presence();
 
-    /* A line that is high with NO pull-up means something is actively driving
+    /* A line held high against the pull-up means something is actively driving
      * it before we have asked for anything: a stuck module, or TRIG and ECHO
      * swapped in the harness so our own trigger output is on this pin.
      *
@@ -219,6 +236,10 @@ void hn_ultrasonic_read(hn_ultrasonic_reading_t &r)
          * trigger, so the tail of this burst is not read as the next echo. */
         if (i + 1 < HN_US_SAMPLES) hn_delay_ms(HN_US_SAMPLE_GAP_MS);
     }
+
+    /* Release the pull-up. Leaving it on would cost ~70 uA continuously with
+     * the sensor connected, which is a quarter of the entire budget. */
+    pinMode(HN_PIN_US_ECHO, INPUT);
 
     /* Filtering and classification are pure logic and live in hn_filter.cpp so
      * they can be exercised against known inputs on a host machine. */
