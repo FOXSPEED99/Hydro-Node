@@ -8,13 +8,25 @@
  *
  * Board: ESP32-S3 (same unit as the full Hub), 480x320 ILI9488/ILI9486 over
  * TFT_eSPI, Ra-02 SX1278 over RadioLib.
+ *
+ * ---------------------------------------------------------------------------
+ * ONLY TWO SECTIONS NEED EDITING, AND BOTH ARE AT THE TOP OF THIS FILE:
+ *
+ *   1. TANK      how many tanks, their litres, water height, blind zone
+ *   2. NETWORK   WiFi credentials and the OTA password, if you want
+ *                over-the-air updates
+ *
+ * Everything below those - LoRa settings, pin numbers, timings, colours - is
+ * either fixed by the hardware or has to match the Node, and should be left
+ * alone unless you are changing the design.
+ * ---------------------------------------------------------------------------
  */
 #pragma once
 
 #include <Arduino.h>
 
 /* ========================================================================= */
-/* TANK CONFIGURATION - the only thing an installer changes                   */
+/* 1. TANK - the geometry of the installation                                 */
 /* ========================================================================= */
 /*
  * The tanks are plumbed together, so the water sits at the same level in all
@@ -65,6 +77,33 @@
  * The speed of sound moves ~0.18% per degree, so a 10 C error is ~1.8% of the
  * distance. Set it to the typical headspace temperature at your site. */
 #define TANK_FALLBACK_TEMP_C    25.0f
+
+/* ========================================================================= */
+/* 2. NETWORK - optional, for over-the-air updates                            */
+/* ========================================================================= */
+/*
+ * Entirely optional. At WIFI_ENABLED 0 the whole network layer is not even
+ * compiled in: no WiFi stack, no OTA, and the Hub simply receives and
+ * displays. Turn it on and you can reflash the Hub from the Arduino IDE
+ * without a cable, which is what makes a month-long test practical.
+ *
+ * The receiver never depends on the network. If the router reboots, the Hub
+ * keeps receiving and displaying and only OTA stops.
+ */
+
+/* 1 to enable WiFi and OTA. Fill in the two lines below as well. */
+#define WIFI_ENABLED            0
+
+#define WIFI_SSID               "your-wifi"
+#define WIFI_PASSWORD           "your-password"
+
+/* Once on the network the Hub appears in the IDE under
+ * Tools > Port > "hydro-hub at 192.168.x.x".
+ *
+ * CHANGE THE PASSWORD. Without one, anyone on the network can flash arbitrary
+ * firmware onto a device wired to your tank. */
+#define OTA_HOSTNAME            "hydro-hub"
+#define OTA_PASSWORD            "hydro-ota"
 
 /* ========================================================================= */
 /* LORA - MUST MATCH firmware/HydroNode/hn_config.h EXACTLY                   */
@@ -141,30 +180,8 @@
 #define C_CRITICAL     0xD1C7   /* #d03b3b                         */
 
 /* ========================================================================= */
-/* FIELD TEST: WIFI, OTA AND LOGGING                                          */
+/* Internals - you do not normally need to touch anything below here        */
 /* ========================================================================= */
-/*
- * None of this is needed to run the Hub. Leave WIFI_SSID empty and the Hub
- * never touches the radio stack - it just receives and displays, exactly as
- * before. Everything here exists so a month-long test can be updated and
- * inspected without unmounting anything.
- */
-
-/* Set to 1 and fill in the credentials below to enable WiFi and OTA. At 0 the
- * whole network layer compiles out - no WiFi stack, no OTA - and the Hub just
- * receives and displays. */
-#define WIFI_ENABLED            0
-
-#define WIFI_SSID               "your-wifi"
-#define WIFI_PASSWORD           "your-password"
-
-/* The Hub appears in the Arduino IDE's port list under this name once it is on
- * the network: Tools > Port > "hydro-hub at 192.168.x.x".
- *
- * The password is not decoration. Without it, anyone on the network can flash
- * arbitrary firmware onto a device wired to your tank. Change it. */
-#define OTA_HOSTNAME            "hydro-hub"
-#define OTA_PASSWORD            "hydro-ota"
 
 /* How often to retry a dropped WiFi connection. Deliberately slow: an
  * association plus DHCP can take 5-10 s, and retrying sooner aborts the
