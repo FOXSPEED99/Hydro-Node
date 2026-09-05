@@ -14,8 +14,8 @@ Re-derive it after any schematic edit and check it against this file.
 
 | Signal | Arduino | AVR | Path from the connector |
 |---|---|---|---|
-| Ultrasonic TRIG | D6 | PD6 | `J3.4 → R2 100 Ω → D6` |
-| Ultrasonic ECHO | **D8** | **PB0 / ICP1** | `J3.3 → R1 100 Ω → D8` |
+| Ultrasonic TRIG | **D8** | PB0 | `J3.3 → R1 100 Ω → D8` — *as built, see §3* |
+| Ultrasonic ECHO | **D6** | PD6 | `J3.4 → R2 100 Ω → D6` — *as built, see §3* |
 | DS18B20 power | D3 | PD3 | `J2.3 → D3`, and `R7 4.7 kΩ` pull-up referenced to D3 |
 | DS18B20 data | D4 | PD4 | `J2.1 → R4 100 Ω → D4` |
 | Flow switch, digital | D5 | PD5 | `J1.2 → R5 100 Ω → D5` |
@@ -38,7 +38,7 @@ left open.
 |---|---|---|---|---|---|---|
 | J1 | Flow Switch | B2B-XH-A | switched GND | flow node | — | — |
 | J2 | Temp | B3B-XH-A | 1-Wire data | switched GND | sensor VDD (D3) | — |
-| J3 | Ultrasonic | B4B-XH-A | switched GND | BATT+ | ECHO | TRIG |
+| J3 | Ultrasonic | B4B-XH-A | switched GND | BATT+ | TRIG (D8) | ECHO (D6) |
 
 ---
 
@@ -71,15 +71,42 @@ Two consequences the firmware must respect:
 
 These are not incidental; each one changes how the corresponding driver works.
 
-**ECHO is on D8 = PB0 = ICP1.** This is the ATmega328P's input capture pin. The
-Stage 0 review raised the previous revision's placement as **HW-018** — *"Echo
-is on D7 instead of D8, so hardware input capture is unavailable"* — and
-recommended swapping echo to D8. This board is that fix. The driver therefore
-uses Timer1 input capture when ECHO is on D8: the edges are timestamped in
-hardware with no interrupt-latency jitter, and the CPU can idle-sleep through
-the flight time instead of spinning. If an as-built harness swaps TRIG and ECHO,
-the firmware can be configured to match it and will use software pulse timing on
-the configured ECHO pin.
+**TRIG is on D8 and ECHO is on D6 — the opposite of what this document
+originally claimed.** This is worth recording properly, because the wrong
+version of it cost a bench session.
+
+The Stage 0 review raised **HW-018** against the *previous* board revision —
+*"Echo is on D7 instead of D8, so hardware input capture is unavailable"* — and
+recommended moving echo to D8, which is `PB0` = `ICP1`, the ATmega328P's input
+capture pin. Seeing `J3.3 → D8` in this revision's netlist, I inferred that the
+recommendation had been implemented and that `J3.3` therefore carried echo.
+
+It had not. The harness that was actually built puts the module's TRIG on `J3.3`
+(→ D8) and its ECHO on `J3.4` (→ D6). This was settled empirically: a plain
+HC-SR04 sketch with `trigPin = 8, echoPin = 6` measures correct distances. A
+working measurement outranks an inference from a netlist, and the firmware now
+matches the hardware rather than the other way round.
+
+**The practical consequence is small, and the harness does not need reworking.**
+Echo is no longer on an input capture pin, so `hn_ultrasonic.cpp` times the
+pulse in software. Weighing that honestly:
+
+| | Input capture (D8) | Software timing (D6) |
+|---|---|---|
+| Echo resolution | 0.125 µs, no jitter | 8 µs (`micros()` at 8 MHz) |
+| As distance error | negligible | **±1.4 mm** |
+| CPU during flight | idle-sleeps | spins |
+| Extra energy per cycle | — | **0.075 mA·s of a ~10 mA·s budget (0.7 %)** |
+| Over two years | — | ~11 mAh of a 4400 mAh pack |
+
+±1.4 mm sits underneath the ceramic resonator's ±0.5 % (≈ ±5 mm at a 1 m range)
+and well underneath the headspace temperature-gradient term. So **HW-018 is
+effectively closed for this board**: at this tank's 0.05–1.00 m range, hardware
+capture is a nicety, not a requirement.
+
+The driver switches back to input capture automatically if `HN_PIN_US_ECHO` is
+ever set to 8 again — the choice is one macro, `HN_US_ECHO_HAS_INPUT_CAPTURE`
+in `hn_board.h`.
 
 **The DS18B20 is powered from a GPIO, with its pull-up referenced to that same
 GPIO.** Driving `D3` low depowers the sensor *and* removes the 4.7 kΩ pull-up's
@@ -146,11 +173,70 @@ measurement separates them, so the firmware reports presence as
 `UNCONFIRMED` rather than guessing. A *closed* contact, or a fault voltage, is
 positive proof the harness is there.
 
+**Testing the flow path without a switch.** The whole chain can be exercised
+with a jumper, because a closed contact is just a short to ground:
+
+| Action | Expected report |
+|---|---|
+| Short `J1.1` to `J1.2` | `Flow switch  OK  [connected]  FILLING  D5=0  A2=~0/1023  agree 5/5`, and `gate=1` on the `#HN` line |
+| Remove the short | back to `idle`, `D5=1`, `A2` near full scale — **without** reporting a fault |
+
+Both halves are meaningful. The first proves the digital path, the analogue
+path, the majority vote and the polarity all agree. The second is a live test of
+the settle-and-retry in §4.1: removing the short leaves the node climbing
+through 1 MΩ for ~120 ms, squarely in the "fault" voltage band, and the re-read
+is what stops that transient being reported as water in the connector.
+
+Shorting these two pins is electrically harmless — `R6` limits the current to
+3.6 µA. Note it is `J1.1` (switched ground) to `J1.2` (the flow node); the
+switch is a dry contact, so there is no polarity to get wrong.
+
 **Hardware fix, if this matters:** fit an end-of-line resistor (e.g. 100 kΩ)
 across the contact inside the switch housing. The node then sits at a third,
 distinct voltage when the harness is present and the contact is open, and
 `hn_classify_flow()` gains a band it can name. This is the only change that
 would make flow-switch presence detection definitive.
+
+---
+
+## 4.4 Bench connection: powering and programming the board
+
+The `J?` header carries the serial lines **and** the battery rail, so how you
+connect it matters.
+
+| J? pin | Signal | USB-serial adapter |
+|---|---|---|
+| 1 | DTR | DTR |
+| 2 | TXO (the MCU transmits) | **RXD** |
+| 3 | RXI (the MCU receives) | **TXD** |
+| 4 | BATT+ | VCC — see the warning |
+| 5, 6, 7 | GND (switched) | GND (any one) |
+
+**The adapter must be set to 3.3 V.** A 5 V adapter puts 5 V directly onto the
+battery rail and the MCU.
+
+> **Never connect the adapter's VCC while the battery is fitted.** `J?.4` is the
+> `BATT+` net, so adapter VCC back-feeds the LS14500 cells. Those are primary
+> Li-SOCl₂ — non-rechargeable. Back-feeding them is a safety hazard, not just
+> bad practice.
+
+That leaves two valid arrangements:
+
+**Bench powered.** Remove the battery and connect all five lines including VCC.
+The adapter's VCC reaches the MCU's VCC and its ground reaches the switched
+ground net, so the board runs from USB and the magnet latch is bypassed
+entirely — `Q1` is irrelevant and no magnet is needed. This is the convenient
+mode for development.
+
+**Battery powered.** Fit the battery and **leave the adapter's VCC wire
+disconnected** — only DTR, RXD, TXD and GND. Then bring the magnet to the reed
+switch to turn the device on. This is how the product actually runs, and it is
+the arrangement to use for any current measurement or endurance test.
+
+Either way, the DTR line gives the Pro Mini its usual auto-reset, so programming
+needs no button press. Note that resetting the MCU does **not** disturb the
+latch: that independence is deliberate, so a crashed or reflashed Node stays
+powered.
 
 ---
 
@@ -161,11 +247,11 @@ to be wrong. None of them should be taken on trust.
 
 | # | Assumption | Why we believe it | How to check | If wrong |
 |---|---|---|---|---|
-| 1 | `J3.3` = ECHO, `J3.4` = TRIG | The ultrasonic harness is a **cross-over cable** — the RCWL-1670's own pads run GND / RX(TRIG) / TX(ECHO) / +5 V, so positions 2 and 4 swap. Confirmed during the Stage 0 review. ECHO on D8 is preferred because it enables input capture. | Continuity from each module pad to its `J3` pin before first power-up, or the known-good basic sketch pin pair. | Swap `HN_PIN_US_TRIG` / `HN_PIN_US_ECHO` in `hn_board.h`. If ECHO is not D8, the driver uses software pulse timing instead of input capture. |
+| 1 | ~~`J3.3` = ECHO, `J3.4` = TRIG~~ → **SETTLED: `J3.3` = TRIG (D8), `J3.4` = ECHO (D6)** | Not an assumption any more. A plain HC-SR04 sketch with `trigPin = 8, echoPin = 6` measures correct distances on the built hardware. | Already done. | Firmware matches the as-built harness; see §3. |
 | 2 | The flow switch is normally-open and **closes** on flow | Standard for an HT-60 class paddle switch. | Blow through the switch and watch `fl.d` in the serial output. | `HN_FLOW_FILLING_IS_LOW` in `hn_config.h`. |
 | 3 | The RCWL-1670 drives ECHO **low** while idle | Normal for HC-SR04-compatible modules; it is what makes the pull-up presence probe work. | Scope the echo line with the module connected and idle. | Only the presence *probe* is affected. A real echo already overrides it, so the reading itself stays correct. |
 | 4 | The DS18B20 measures the air the pulse travels through | It is the temperature that determines the speed of sound. | Note where the probe is physically mounted. | If the probe is in the **water**, the compensation is using a poor proxy for headspace air temperature. The review's HW-023 makes this the dominant error term in the whole measurement — see §6. |
-| 5 | The module's blind zone is under 50 mm | Datasheet claims 2 cm. | Flat target, 2 cm outward in 5 mm steps, 20 readings each (review HW-051). | Mechanical: raise the sensor standoff. The firmware already reports this case as `NO ECHO` rather than as a fault. |
+| 5 | ~~The module's blind zone is under 50 mm~~ → **CLOSED: the Hub owns it** | Not a firmware assumption. The Node has no blind-zone constant and reports a silent sensor as `NO ECHO`, which is the honest raw result. The Hub holds the blind zone alongside the tank height and volume curve, where it can be revised without a site visit. | Measure it once when commissioning the Hub, not the Node. | Nothing in the Node changes. |
 
 ---
 
@@ -185,6 +271,10 @@ That is not laziness — three of the corrections cannot sensibly live here:
 - **Humidity.** A tank headspace is essentially always saturated, which raises
   the speed of sound by 0.35–0.6 % over dry air.
 - **Tank geometry and the volume curve**, which differ per installation.
+- **The transducer blind zone**, for the same reason: it is a property of the
+  module and the mounting standoff, and the Node reporting `NO ECHO` is the
+  honest raw answer. Deciding whether that means "full" or "faulty" needs the
+  tank height, which only the Hub has.
 
 Freezing any of those into a sealed rooftop device means a site visit to change
 them. On the Hub they are a Wi-Fi update. The millimetre figure the serial

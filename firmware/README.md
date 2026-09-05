@@ -14,38 +14,65 @@ VCC fed directly from a 3.6 V lithium pack, ground switched by a magnet-operated
 
 ---
 
-## Build
+## Build and flash — Arduino IDE
 
-**Arduino IDE** (primary):
+The project is laid out as a normal Arduino sketch. There is nothing to
+install beyond the IDE itself.
 
-Open `HydroNode/HydroNode.ino`, then set:
+1. **Open the sketch.** `File > Open…` → `firmware/HydroNode/HydroNode.ino`.
+   All the `.cpp` and `.h` files appear as tabs, including `hn_config.h`, which
+   is where every tunable lives.
 
-```
-Tools > Board     > Arduino Pro or Pro Mini
-Tools > Processor > ATmega328P (3.3V, 8 MHz)
-Tools > Port      > your 3.3 V FTDI/CP2102 adapter
-```
+2. **Select the board.**
 
-Then upload and open Serial Monitor at `9600` baud.
+   | Menu | Setting |
+   |---|---|
+   | Tools → Board | Arduino AVR Boards → **Arduino Pro or Pro Mini** |
+   | Tools → Processor | **ATmega328P (3.3V, 8 MHz)** |
+   | Tools → Port | your USB-serial adapter |
 
-**PlatformIO**:
+   The Processor setting matters more than it looks. Choosing the 5 V / 16 MHz
+   variant still compiles and still uploads, and then fails in a way that is
+   genuinely hard to diagnose — every delay in the 1-Wire driver runs twice as
+   long, so the temperature sensor stops answering, and the serial monitor
+   shows only garbage because the UART divisor is halved. So the firmware
+   refuses to build on the wrong clock and tells you which menu to fix.
 
-```
-pio run                 # build
-pio run -t upload       # flash via the J? header with a 3.3 V FTDI/CP2102
-pio device monitor      # read the report at 9600 baud
-```
+3. **Verify** (✓). You should see roughly:
 
-**Make** (no registry access needed — this is what CI and the bench use):
+   ```
+   Sketch uses 12194 bytes (39%) of program storage space.
+   Global variables use 310 bytes (15%) of dynamic memory.
+   ```
+
+4. **Upload** (→). The bootloader runs at 57600 baud and DTR handles the reset,
+   so no button press is needed.
+
+5. **Serial Monitor** (`Ctrl+Shift+M`) at **9600 baud**.
+
+Wiring the USB-serial adapter to the `J?` header, and the warning about never
+connecting its VCC while the battery is fitted, are in
+[`docs/HARDWARE.md`](docs/HARDWARE.md).
+
+### Other build routes
+
+Both use the same files — there is only one copy of the source.
+
+**Make**, for CI or a shell workflow (this is what the firmware is regression
+tested with):
 
 ```
 sudo apt install gcc-avr avr-libc arduino-core-avr
 make                    # build, print size
-make test               # host tests for the decision logic
+make test               # 43 host tests for the decision logic
 ```
 
-Current footprint: **12.2 kB flash (37 %), 310 B SRAM (15 %)** — room for the
-radio, the sleep manager and the pairing state machine.
+**PlatformIO**, if you prefer it: `pio run`. `platformio.ini` points `src_dir`
+at the sketch folder.
+
+Current footprint: **12194 bytes flash (39 % of the Pro Mini's 30720), 310 B
+SRAM (15 %)** — room for the radio, the sleep manager and the pairing state
+machine.
 
 No external libraries. The 1-Wire master and the DS18B20 driver are part of this
 firmware on purpose: the fault detection Section 1 exists to provide lives in
@@ -111,14 +138,13 @@ outside what this installation expects.
 
 ## Module map
 
-Everything lives flat in `HydroNode/`, so every file is a tab in the Arduino
-IDE.
+Everything lives flat in `HydroNode/`, so every file is a tab in the IDE.
 
 | File | Owns |
 |---|---|
 | `hn_board.*` | Pin map, safe idle states, ADC power, and the two timing hooks Section 3 replaces |
 | `hn_config.h` | Every tunable, each with the reasoning for its value |
-| `hn_ultrasonic.*` | Trigger, echo pulse timing, filtering handoff |
+| `hn_ultrasonic.*` | Trigger, echo pulse timing (input capture or software, per the echo pin), filtering handoff |
 | `hn_temperature.*` | DS18B20 with GPIO power gating; split `start`/`finish` so the conversion can overlap |
 | `hn_onewire.*` | 1-Wire master with a three-valued reset: presence / no-presence / shorted |
 | `hn_flow.*` | Dual-path sampling and the settle-and-retry that keeps an RC transient from being called a fault |
@@ -128,7 +154,7 @@ IDE.
 | `hn_report.*` | Serial output, compiled out entirely when `HN_SERIAL_ENABLED` is 0 |
 | `hn_acquire.*` | Cycle sequencing — the seam Sections 2 and 3 plug into |
 
-`hn_filter.cpp` exists as a separate unit for a specific reason. Sample
+`hn_filter.cpp` exists as a separate translation unit for a specific reason. Sample
 filtering and fault classification are the parts of this firmware most likely to
 be wrong and least likely to be caught on a bench: a median that mishandles an
 outlier and a chattering switch misreported as a wet connector both look
@@ -167,12 +193,72 @@ Three rules worth keeping:
 
 ---
 
-## Before first power-up
+## Bench notes
 
-`docs/HARDWARE.md` §5 lists the five assumptions this firmware makes and how to
-check each one. The two worth doing with a meter in hand:
+`docs/HARDWARE.md` §5 lists the assumptions this firmware makes and how to check
+each one. Two are already settled on the built hardware:
 
-* **Ultrasonic harness continuity.** It is a cross-over cable — the module's
-  pads run GND / TRIG / ECHO / +5 V while `J3` runs GND / VCC / ECHO / TRIG.
-  That is by design, but it is not marked on the board.
+* **Ultrasonic pin order — settled.** `J3.3` → D8 is **TRIG** and `J3.4` → D6 is
+  **ECHO**, confirmed by a plain HC-SR04 sketch measuring correct distances. The
+  firmware matches that. It is the opposite of what the schematic review
+  predicted; §3 of `docs/HARDWARE.md` explains why, and why the harness does not
+  need reworking.
+* **The buzzer stays silent.** `D7` is parked `OUTPUT LOW` in
+  `hn_board_begin()` before anything else touches hardware, and nothing in
+  Section 1 ever drives it. Sound is Section 4.
+
+Still open:
+
 * **Flow switch polarity.** The firmware assumes normally-open, closing on flow.
+  With no switch to hand you can still test the whole path with a jumper — see
+  `docs/HARDWARE.md` §4.3.
+* **The blind zone.** The single most informative measurement left on the
+  ultrasonic; `docs/HARDWARE.md` §5 row 5.
+
+---
+
+## Section 2 — LoRa
+
+The Node transmits a **19-byte binary packet** to the Hub after every
+acquisition. `hn_packet.h` is the contract; a byte-identical copy lives in
+`Hydro Hub Device/HydroHubLite/` and `make check-protocol` fails the build if
+the two drift.
+
+### Why binary and not JSON
+
+On LoRa, payload length is an energy question — airtime is roughly proportional
+to bytes, and the radio draws ~100 mA for every millisecond of it. Against the
+two-year target on 4.4 Ah usable:
+
+| Payload | Airtime | Charge/TX | 2-yr total | Margin |
+|---|---|---|---|---|
+| JSON ~110 B @ SF9 | 595 ms | 59.5 mA·s | 9.6 Ah | **0.46× — fails** |
+| binary 19 B @ SF9 | 185 ms | 18.5 mA·s | 3.6 Ah | 1.21× |
+| binary 19 B @ SF7 | 57 ms | 5.7 mA·s | 1.8 Ah | **2.49×** |
+
+Same information either way; text costs about six times the transmit energy.
+Debuggability is not lost — the Hub decodes the packet and prints it as JSON on
+its serial port.
+
+### What is sent, and what is deliberately not
+
+Raw values only: echo microseconds, the DS18B20's own register, the flow
+switch's ADC count, and a status + presence code per sensor. No distances, no
+percentages, no litres.
+
+The one rule worth knowing: **a sensor that failed sends no value at all**, not
+a stale one and not a zero. `ABSENT`, `FAULT` and `NO ECHO` all carry
+`HN_ECHO_NONE`, so the Hub cannot turn a dead sensor into a water level. An
+`UNSTABLE` reading *is* sent, labelled — a noisy but real measurement is still
+the Hub's to judge.
+
+### Spreading factor
+
+`HN_LORA_SPREADING_FACTOR` starts at 9 for bring-up, because it has ~5 dB more
+margin than SF7 and the first job is simply for the two ends to hear each other.
+It costs 3× the airtime. Once the Hub's diagnostics screen shows real RSSI and
+SNR, drop to the lowest SF with comfortable headroom and the battery margin
+roughly doubles. Decide it from the measurement.
+
+> **Never transmit without the antenna connected.** An open IPEX/SMA connector
+> reflects the PA output back into the SX1278 and can destroy it.

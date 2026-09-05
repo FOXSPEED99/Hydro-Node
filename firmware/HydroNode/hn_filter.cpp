@@ -98,12 +98,16 @@ void hn_filter_ultrasonic(const uint16_t *valid, uint8_t n_valid,
         return;
     }
 
-    if (HN_US_PLAUSIBLE_MAX_US > 0 &&
-        (r.echo_us < HN_US_PLAUSIBLE_MIN_US || r.echo_us > HN_US_PLAUSIBLE_MAX_US)) {
+#if HN_US_PLAUSIBLE_MAX_US > 0
+    /* Optional bench-only geometry check - see hn_config.h. Compiled out
+     * entirely on a production build, where the Hub owns tank geometry and the
+     * Node has no business having an opinion about it. */
+    if (r.echo_us < HN_US_PLAUSIBLE_MIN_US || r.echo_us > HN_US_PLAUSIBLE_MAX_US) {
         /* Advisory only. Still a real measurement, still transmitted raw. */
         r.status = HN_STATUS_OUT_OF_RANGE;
         return;
     }
+#endif
 
     r.status = HN_STATUS_OK;
 }
