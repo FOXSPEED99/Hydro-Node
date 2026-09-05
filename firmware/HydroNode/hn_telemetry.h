@@ -16,6 +16,6 @@
  * hn_config.h; they are parameters rather than globals so the tests can drive
  * them directly. */
 void hn_telemetry_build(const hn_reading_t &r, uint16_t pair_hash,
-                        uint16_t node_id, hn_packet_t &out);
+                        uint16_t node_id, uint16_t battery_mv, hn_packet_t &out);
 
 #endif /* HN_TELEMETRY_H */

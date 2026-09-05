@@ -296,6 +296,38 @@ static void report_machine(const hn_reading_t &r)
 }
 #endif
 
+void hn_report_boot(bool watchdogReset, uint16_t battery_mv)
+{
+    Serial.println();
+    if (watchdogReset) {
+        Serial.println(F("!! BOOTED FROM A WATCHDOG RESET - the last cycle hung."));
+        Serial.println(F("   If this repeats, capture the cycle before it happens."));
+    } else {
+        Serial.println(F("Boot: power-on."));
+    }
+    Serial.print(F("Battery: "));
+    if (battery_mv == 0) {
+        Serial.println(F("not measured"));
+    } else {
+        Serial.print(battery_mv);
+        Serial.print(F(" mV   (calibrate HN_BANDGAP_CAL against a meter -"));
+        Serial.println(F(" the bandgap is only +/-10% untrimmed)"));
+    }
+#if HN_PRODUCTION
+    Serial.println(F("PRODUCTION build: sleep on, 120 s cycle."));
+#else
+    Serial.println(F("BENCH build: no sleep, 5 s cycle. Set HN_PRODUCTION 1 to deploy."));
+#endif
+}
+
+void hn_report_battery(uint16_t battery_mv)
+{
+    if (battery_mv == 0) return;
+    Serial.print(F("  Battery  "));
+    Serial.print(battery_mv);
+    Serial.println(F(" mV"));
+}
+
 void hn_report_radio(bool present)
 {
     Serial.println();
@@ -349,5 +381,7 @@ void hn_report_selftest(const hn_reading_t &)  {}
 void hn_report_reading(const hn_reading_t &)   {}
 void hn_report_radio(bool)                     {}
 void hn_report_tx(bool, uint8_t, uint16_t)     {}
+void hn_report_boot(bool, uint16_t)            {}
+void hn_report_battery(uint16_t)               {}
 
 #endif

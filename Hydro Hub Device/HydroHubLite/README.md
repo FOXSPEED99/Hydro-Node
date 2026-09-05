@@ -159,3 +159,47 @@ other — but it costs 3× the airtime and takes the Node's battery margin down 
 about 1.2×. Once the diagnostics screen is showing real RSSI and SNR, drop to
 the lowest spreading factor that still has comfortable headroom and the battery
 gets that back.
+
+---
+
+## Field-test features
+
+Three additions for leaving this running unattended. All optional, all
+non-blocking — the Hub receives and displays with every one of them disabled.
+
+### WiFi + OTA
+
+```c
+#define WIFI_ENABLED  1
+#define WIFI_SSID     "your-wifi"
+#define WIFI_PASSWORD "your-password"
+#define OTA_PASSWORD  "change-this"
+```
+
+The Hub then appears in the Arduino IDE under `Tools → Port` as
+`hydro-hub at 192.168.x.x`. Upload with no cable.
+
+**Change the OTA password.** Without one, anyone on the network can flash
+arbitrary firmware onto a device wired to your tank.
+
+If the router reboots the Hub keeps working and only OTA stops. At
+`WIFI_ENABLED 0` the network stack is not compiled in at all.
+
+### Field log — Button A, twice
+
+The dashboard answers "how much water is there". The FIELD screen answers a
+different question: **did this work, and what did it cost.** You cannot
+reconstruct a month of link reliability from the final screen, so it is
+accumulated as it happens and mirrored to NVS, surviving reboots and power cuts.
+
+The row worth looking at first is **longest silence**. An average hides a
+three-hour hole, and the hole is what you have to design around.
+
+### Watchdog
+
+Reboots if the loop stops for 30 s. A hung Hub on a wall for three weeks is
+indistinguishable from a dead one, and a reboot costs nothing — the field log is
+in NVS. Boot count is on the FIELD screen: if it climbs, that is a finding.
+
+Full deployment procedure, including what a month can and cannot prove:
+[`../../firmware/docs/FIELD-TEST.md`](../../firmware/docs/FIELD-TEST.md)

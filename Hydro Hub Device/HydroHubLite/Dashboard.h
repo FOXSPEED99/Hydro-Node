@@ -26,11 +26,12 @@
 
 #include "NodeLink.h"
 #include "TankMath.h"
+#include "FieldLog.h"
 
 #include <Arduino.h>
 #include <TFT_eSPI.h>
 
-enum class DashScreen : uint8_t { Main, Diagnostics };
+enum class DashScreen : uint8_t { Main, Diagnostics, Field };
 
 /* Everything the screen draws, assembled by the sketch so the renderer has no
  * opinions of its own about what the numbers mean. */
@@ -54,6 +55,17 @@ struct DashModel {
     uint8_t   flowState = 0;
     bool      gated = false;
 
+    /* Node battery in millivolts; 0 when the Node did not report one. For a
+     * month-long test this is the number the whole exercise is about. */
+    uint16_t  batteryMv = 0;
+
+    bool      netOnline = false;
+    char      netAddr[20] = "";
+
+    /* Field-test counters, for the third screen. */
+    const FieldStats *stats = nullptr;
+    int       reliabilityPct = -1;
+
     /* Raw, for the diagnostics screen. */
     uint16_t  echoUs = 0;
     int16_t   tempRaw = 0;
@@ -71,3 +83,7 @@ void dashboardRender(TFT_eSPI &tft, const DashModel &m);
 
 /* Full repaint on the next render. */
 void dashboardInvalidate();
+
+/* Takes over the whole panel while firmware is being written. Nothing else may
+ * draw until the device reboots. */
+void dashboardDrawOta(TFT_eSPI &tft, uint8_t percent);

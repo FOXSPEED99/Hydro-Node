@@ -23,6 +23,29 @@
 #define HN_FW_SECTION           "Section 1 - sensors & detection"
 
 /* ------------------------------------------------------------------------- */
+/* Deployment profile                                                         */
+/* ------------------------------------------------------------------------- */
+/*
+ * ONE SWITCH FOR AN UNATTENDED DEPLOYMENT. Set to 1 before leaving a Node in
+ * the field; leave at 0 for bench work.
+ *
+ * It exists because getting a field test right means changing three unrelated
+ * things at once, and forgetting any one of them invalidates the result:
+ *
+ *   sleep on        without it the MCU runs at ~4 mA and the pack lasts weeks
+ *   interval 120 s  the real cycle, not the 5 s bench cadence
+ *   SERIAL OFF      this is the one people forget. The report is ~600 bytes,
+ *                   and at 9600 baud that is 625 ms of blocking transmission
+ *                   per cycle - roughly as much awake time as the entire
+ *                   measurement plus the radio burst combined. Leaving it on
+ *                   doubles the energy per cycle and makes any battery figure
+ *                   you collect meaningless.
+ */
+#ifndef HN_PRODUCTION
+#define HN_PRODUCTION           0
+#endif
+
+/* ------------------------------------------------------------------------- */
 /* Build-time feature switches                                                */
 /* ------------------------------------------------------------------------- */
 
@@ -32,7 +55,7 @@
  * characters out at 9600 baud. Section 5 will make this the default once LoRa
  * carries the data. */
 #ifndef HN_SERIAL_ENABLED
-#define HN_SERIAL_ENABLED       1
+#define HN_SERIAL_ENABLED       (!HN_PRODUCTION)
 #endif
 
 /* 9600 baud, not 115200. At F_CPU = 8 MHz the UART divisor for 115200 is 7.68,
@@ -78,7 +101,54 @@
  * SleepManager, not to a delay() - see hn_delay_ms() in hn_board.h, which is
  * the single function that has to change. */
 #ifndef HN_CYCLE_INTERVAL_MS
-#define HN_CYCLE_INTERVAL_MS    5000UL
+#if HN_PRODUCTION
+#define HN_CYCLE_INTERVAL_MS    120000UL   /* the real cycle */
+#else
+#define HN_CYCLE_INTERVAL_MS    5000UL     /* bench: fast enough to watch */
+#endif
+#endif
+
+/* ------------------------------------------------------------------------- */
+/* Sleep (Section 3)                                                          */
+/* ------------------------------------------------------------------------- */
+
+/* Power-down between cycles instead of spinning in delay(). ~4.5 uA asleep
+ * against ~4 mA awake. Off on the bench only because a sleeping Node is
+ * awkward to reprogram - the bootloader needs the chip awake when you press
+ * upload, and a 120 s sleep means waiting for it. */
+#ifndef HN_SLEEP_ENABLED
+#define HN_SLEEP_ENABLED        HN_PRODUCTION
+#endif
+
+/* Reset the chip if an awake cycle hangs for more than 8 seconds. A normal
+ * cycle is under a second, so this only fires on a genuine fault - and on a
+ * roof, a reboot is infinitely better than a Node that sits there flat.
+ * The count of watchdog resets is reported at start-up. */
+#ifndef HN_WDT_GUARD_ENABLED
+#define HN_WDT_GUARD_ENABLED    1
+#endif
+
+/* ------------------------------------------------------------------------- */
+/* Battery measurement                                                        */
+/* ------------------------------------------------------------------------- */
+
+/*
+ * Calibration constant for the internal bandgap: 1.1 V * 1023 * 1000.
+ *
+ * The bandgap is only specified to +/-10%, so the default reads to about
+ * +/-0.35 V, which is far too coarse to follow a lithium discharge curve. To
+ * calibrate a board, once:
+ *
+ *   1. Build with HN_PRODUCTION 0 so the serial report is on.
+ *   2. Measure the actual voltage on the VCC pin with a meter: V_real.
+ *   3. Read the reported figure from the banner: V_reported.
+ *   4. HN_BANDGAP_CAL = 1125300 * V_real / V_reported.
+ *
+ * That takes it to roughly 1%. Do it per board - the error is per chip, not
+ * per design.
+ */
+#ifndef HN_BANDGAP_CAL
+#define HN_BANDGAP_CAL          1125300UL
 #endif
 
 /* ------------------------------------------------------------------------- */

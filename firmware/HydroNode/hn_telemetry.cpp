@@ -25,7 +25,7 @@ static_assert((int)HN_FLOW_IDLE    == (int)HN_W_FLOW_IDLE,    "wire flow drift")
 static_assert((int)HN_FLOW_FILLING == (int)HN_W_FLOW_FILLING, "wire flow drift");
 
 void hn_telemetry_build(const hn_reading_t &r, uint16_t pair_hash,
-                        uint16_t node_id, hn_packet_t &out)
+                        uint16_t node_id, uint16_t battery_mv, hn_packet_t &out)
 {
     out.version   = HN_PROTO_VERSION;
     out.pair_hash = pair_hash;
@@ -73,7 +73,5 @@ void hn_telemetry_build(const hn_reading_t &r, uint16_t pair_hash,
     if (r.flow.level_digital)  out.flags |= HN_FLAG_FLOW_LEVEL;
     if (r.temperature.crc_ok)  out.flags |= HN_FLAG_TEMP_CRC_OK;
 
-    /* Reserved. The Node has no battery measurement yet; the field exists now
-     * so adding one later does not change the wire format. */
-    out.battery_dv = HN_BATT_NONE;
+    out.battery_dv = (battery_mv == 0) ? HN_BATT_NONE : HN_BATT_ENCODE(battery_mv);
 }

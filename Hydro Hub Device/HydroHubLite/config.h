@@ -139,3 +139,59 @@
 #define C_WARNING      0xFD83   /* #fab219                         */
 #define C_SERIOUS      0xEC0B   /* #ec835a                         */
 #define C_CRITICAL     0xD1C7   /* #d03b3b                         */
+
+/* ========================================================================= */
+/* FIELD TEST: WIFI, OTA AND LOGGING                                          */
+/* ========================================================================= */
+/*
+ * None of this is needed to run the Hub. Leave WIFI_SSID empty and the Hub
+ * never touches the radio stack - it just receives and displays, exactly as
+ * before. Everything here exists so a month-long test can be updated and
+ * inspected without unmounting anything.
+ */
+
+/* Set to 1 and fill in the credentials below to enable WiFi and OTA. At 0 the
+ * whole network layer compiles out - no WiFi stack, no OTA - and the Hub just
+ * receives and displays. */
+#define WIFI_ENABLED            0
+
+#define WIFI_SSID               "your-wifi"
+#define WIFI_PASSWORD           "your-password"
+
+/* The Hub appears in the Arduino IDE's port list under this name once it is on
+ * the network: Tools > Port > "hydro-hub at 192.168.x.x".
+ *
+ * The password is not decoration. Without it, anyone on the network can flash
+ * arbitrary firmware onto a device wired to your tank. Change it. */
+#define OTA_HOSTNAME            "hydro-hub"
+#define OTA_PASSWORD            "hydro-ota"
+
+/* How often to retry a dropped WiFi connection. Deliberately slow: an
+ * association plus DHCP can take 5-10 s, and retrying sooner aborts the
+ * attempt in progress, which looks like an endless connecting loop. */
+#define WIFI_RETRY_MS           20000UL
+
+/* ------------------------------------------------------------------------- */
+/* Field log                                                                  */
+/* ------------------------------------------------------------------------- */
+/*
+ * A month of running tells you nothing if all you have at the end is a screen
+ * showing the current level. These are the counters worth having: how reliable
+ * the link was, the worst outage, how far the battery moved, and how often
+ * each sensor misbehaved.
+ *
+ * Kept in RAM and mirrored to NVS so a power cut does not erase the month.
+ */
+#define FIELDLOG_ENABLED        1
+
+/* Persist every N accepted packets. At a 120 s cycle that is roughly hourly,
+ * so a month costs ~700 NVS writes - nothing against its endurance, and at
+ * most an hour of counters lost to a power cut. */
+#define FIELDLOG_SAVE_EVERY     30
+
+/* ------------------------------------------------------------------------- */
+/* Watchdog                                                                   */
+/* ------------------------------------------------------------------------- */
+/* Reboot if the main loop stops running for this long. A hung Hub on a wall
+ * for three weeks is indistinguishable from a dead one. */
+#define HUB_WDT_TIMEOUT_S       30

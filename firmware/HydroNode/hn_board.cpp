@@ -106,10 +106,22 @@ void hn_board_begin()
 
 void hn_delay_ms(uint32_t ms)
 {
-    /* Section 3 replaces this with a watchdog-timed SLEEP_MODE_PWR_DOWN, which
-     * is where the two-year battery life actually comes from. Until then it is
-     * an honest busy delay, and it is deliberately the only one in the
-     * codebase so there is exactly one thing to change. */
+#if HN_SLEEP_ENABLED
+    /*
+     * Idle-sleep the wait instead of spinning. IDLE keeps every peripheral
+     * clock running - Timer0 for millis(), Timer1 for the echo capture - and
+     * only stops the CPU core, so it is safe in the middle of a measurement.
+     * Worth ~2.5 mA across the ~250 ms of inter-sample gaps in a cycle.
+     *
+     * Below ~4 ms it is not worth it: Timer0 only overflows every ~2 ms, so
+     * the granularity would dominate the wait.
+     */
+    if (ms >= 4 && (SREG & _BV(SREG_I))) {
+        const uint32_t start = millis();
+        while ((millis() - start) < ms) hn_idle_once();
+        return;
+    }
+#endif
     delay(ms);
 }
 
