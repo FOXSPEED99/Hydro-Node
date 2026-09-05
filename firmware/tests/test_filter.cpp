@@ -139,6 +139,29 @@ static void test_ultrasonic()
     }
 
     {
+        /* The bug this replaced: an unplugged harness is an antenna, its
+         * floating input produces edges, a few land in the valid window, and
+         * the sensor came back reported as "noisy" instead of "missing". */
+        case_name("an unplugged sensor picking up noise reads MISSING, not noisy");
+        const uint16_t s[5] = { 900, 7400, 2100, 15000, 400 };
+        hn_ultrasonic_reading_t r = fresh_us(HN_PRESENCE_ABSENT);
+        hn_filter_ultrasonic(s, 5, r);
+        CHECK(r.status == HN_STATUS_ABSENT, "status=%d", (int)r.status);
+        CHECK(r.presence == HN_PRESENCE_ABSENT, "presence=%d", (int)r.presence);
+        CHECK(r.echo_us == 0, "a fabricated echo of %u us must not be reported", r.echo_us);
+    }
+
+    {
+        /* ...but a noisy reading from a sensor that IS there stays UNSTABLE,
+         * so the fix above cannot swallow a real fault. */
+        case_name("noisy samples from a connected sensor stay UNSTABLE");
+        const uint16_t s[5] = { 900, 7400, 2100, 15000, 400 };
+        hn_ultrasonic_reading_t r = fresh_us(HN_PRESENCE_CONFIRMED);
+        hn_filter_ultrasonic(s, 5, r);
+        CHECK(r.status == HN_STATUS_UNSTABLE, "status=%d", (int)r.status);
+    }
+
+    {
         case_name("a real echo overrides a pull-up probe that said ABSENT");
         const uint16_t s[5] = { 3400, 3410, 3405, 3395, 3402 };
         hn_ultrasonic_reading_t r = fresh_us(HN_PRESENCE_ABSENT);

@@ -45,9 +45,13 @@ void hn_filter_ultrasonic(const uint16_t *valid, uint8_t n_valid,
         return;
     }
 
-    /* Something answered, so the sensor is there whatever the pull-up probe
-     * thought. Behaviour is the better witness. */
-    r.presence = HN_PRESENCE_CONFIRMED;
+    /*
+     * Whether these samples are allowed to overrule the pull-up probe is
+     * decided AFTER they have been filtered, further down - see the note
+     * beside the coherence test. Samples arriving is not by itself evidence of
+     * a sensor: an unplugged input on a long cable picks up noise and produces
+     * edges that a timing loop cannot tell from echoes.
+     */
 
     /*
      * Median first, then reject around it, then average what survives.
@@ -89,11 +93,38 @@ void hn_filter_ultrasonic(const uint16_t *valid, uint8_t n_valid,
     r.echo_us   = (uint16_t)(sum / n_acc);
     r.spread_us = (uint16_t)(hi - lo);
 
-    if (n_acc < HN_US_MIN_ACCEPTED || r.spread_us > HN_US_SPREAD_LIMIT_US) {
-        /* Echoes arrived but do not agree: a moving surface, a partial
-         * obstruction, or a sensor beginning to fail. The value is still
-         * reported - the Hub can decide what to do with it - but it is
-         * labelled so nobody treats it as a clean measurement. */
+    const bool coherent = (n_acc >= HN_US_MIN_ACCEPTED) &&
+                          (r.spread_us <= HN_US_SPREAD_LIMIT_US);
+
+    /*
+     * Behaviour outranks the static probe, but only COHERENT behaviour does.
+     *
+     * This is the rule that was wrong before: any sample surviving the range
+     * filter was treated as proof the sensor was connected. Unplug the harness
+     * and the floating input picks up enough noise to produce edges, a few
+     * land inside the valid window, and a MISSING sensor gets reported as a
+     * working-but-noisy one. That is the most misleading answer available - it
+     * sends you looking for a tuning problem instead of a cable.
+     *
+     * Five samples agreeing with each other is evidence of a sensor. A scatter
+     * of unrelated pulses is not, and when the pull-up probe already said the
+     * line was floating, the two together are conclusive.
+     */
+    if (!coherent && r.presence == HN_PRESENCE_ABSENT) {
+        r.status    = HN_STATUS_ABSENT;
+        r.echo_us   = 0;          /* none of this was a measurement */
+        r.spread_us = 0;
+        return;
+    }
+
+    r.presence = HN_PRESENCE_CONFIRMED;
+
+    if (!coherent) {
+        /* Echoes arrived from a sensor that is genuinely there, but they do
+         * not agree: a moving surface, a partial obstruction, or a sensor
+         * beginning to fail. The value is still reported - the Hub can decide
+         * what to do with it - but it is labelled so nobody treats it as a
+         * clean measurement. */
         r.status = HN_STATUS_UNSTABLE;
         return;
     }
